@@ -197,8 +197,8 @@ export async function populateSamplePets() {
     
     console.log('Successfully populated sample pets!');
     return { success: true, message: 'Successfully added sample pets' };
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error populating pets:', error);
-    return { success: false, message: error.message };
+    return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
