@@ -103,6 +103,30 @@ const Navigation = () => {
                 </Button>
               )}
               
+              {userRole === 'vet' && (
+                <Button
+                  variant={isActive("/vet-portal") ? "default" : "outline"}
+                  size="sm"
+                  asChild
+                >
+                  <Link to="/vet-portal" className="gap-2">
+                    <span className="hidden sm:inline">Vet Portal</span>
+                  </Link>
+                </Button>
+              )}
+              
+              {userRole === 'volunteer' && (
+                <Button
+                  variant={isActive("/volunteer-portal") ? "default" : "outline"}
+                  size="sm"
+                  asChild
+                >
+                  <Link to="/volunteer-portal" className="gap-2">
+                    <span className="hidden sm:inline">Volunteer Portal</span>
+                  </Link>
+                </Button>
+              )}
+              
               <Button variant="outline" size="sm" onClick={signOut}>
                 <LogOut className="h-4 w-4" />
                 <span className="hidden sm:inline">Sign Out</span>
