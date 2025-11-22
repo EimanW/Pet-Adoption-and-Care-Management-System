@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
+import BlobCursor from "@/components/BlobCursor";
 import Home from "./pages/Home";
 import Pets from "./pages/Pets";
 import PetDetail from "./pages/PetDetail";
@@ -24,6 +25,24 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
+      <BlobCursor
+        blobType="circle"
+        fillColor="#5227FF"
+        trailCount={3}
+        sizes={[60, 125, 75]}
+        innerSizes={[20, 35, 25]}
+        innerColor="rgba(255,255,255,0.8)"
+        opacities={[0.6, 0.6, 0.6]}
+        shadowColor="rgba(0,0,0,0.75)"
+        shadowBlur={5}
+        shadowOffsetX={10}
+        shadowOffsetY={10}
+        filterStdDeviation={30}
+        useFilter={true}
+        fastDuration={0.1}
+        slowDuration={0.5}
+        zIndex={100}
+      />
       <BrowserRouter>
         <AuthProvider>
           <Routes>
