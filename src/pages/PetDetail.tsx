@@ -66,6 +66,7 @@ const PetDetail = () => {
   const [feedback, setFeedback] = useState<Feedback[]>([]);
   const [isFavorite, setIsFavorite] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isAppointmentDialogOpen, setIsAppointmentDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
   // Form state
@@ -75,6 +76,14 @@ const PetDetail = () => {
     hasOtherPets: false,
     hasChildren: false,
     experience: '',
+    reason: ''
+  });
+
+  // Appointment form state
+  const [appointmentData, setAppointmentData] = useState({
+    date: '',
+    time: '',
+    type: 'checkup',
     reason: ''
   });
 
@@ -244,6 +253,50 @@ const PetDetail = () => {
     }
   };
 
+  const handleAppointmentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!user) {
+      toast.error("Please log in to schedule an appointment");
+      navigate('/login');
+      return;
+    }
+
+    try {
+      const appointmentDateTime = new Date(`${appointmentData.date}T${appointmentData.time}`);
+
+      const { error } = await supabase
+        .from('vet_appointments')
+        .insert({
+          pet_id: id,
+          user_id: user.id,
+          appointment_date: appointmentDateTime.toISOString(),
+          appointment_type: appointmentData.type,
+          reason: appointmentData.reason,
+          status: 'scheduled'
+        });
+
+      if (error) throw error;
+
+      setIsAppointmentDialogOpen(false);
+      toast.success("Appointment scheduled!", {
+        description: "Your vet appointment has been booked successfully."
+      });
+      
+      // Reset form
+      setAppointmentData({
+        date: '',
+        time: '',
+        type: 'checkup',
+        reason: ''
+      });
+    } catch (error: any) {
+      toast.error("Failed to schedule appointment", {
+        description: error.message
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
@@ -328,9 +381,75 @@ const PetDetail = () => {
                     </DialogContent>
                   </Dialog>
                   
-                  <Button variant="outline" size="lg" className="w-full">
-                    Schedule Visit
-                  </Button>
+                  <Dialog open={isAppointmentDialogOpen} onOpenChange={setIsAppointmentDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button size="lg" variant="outline" className="w-full">
+                        <Calendar className="h-4 w-4 mr-2" />
+                        Schedule Appointment
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-md">
+                      <DialogHeader>
+                        <DialogTitle>Schedule Vet Appointment</DialogTitle>
+                        <DialogDescription>
+                          Book a veterinary appointment for {pet?.name}
+                        </DialogDescription>
+                      </DialogHeader>
+                      <form onSubmit={handleAppointmentSubmit} className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="appointmentDate">Date</Label>
+                          <Input 
+                            id="appointmentDate" 
+                            type="date"
+                            value={appointmentData.date}
+                            onChange={(e) => setAppointmentData({...appointmentData, date: e.target.value})}
+                            min={new Date().toISOString().split('T')[0]}
+                            required 
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="appointmentTime">Time</Label>
+                          <Input 
+                            id="appointmentTime" 
+                            type="time"
+                            value={appointmentData.time}
+                            onChange={(e) => setAppointmentData({...appointmentData, time: e.target.value})}
+                            required 
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="appointmentType">Appointment Type</Label>
+                          <select
+                            id="appointmentType"
+                            className="w-full border border-border rounded-md p-2"
+                            value={appointmentData.type}
+                            onChange={(e) => setAppointmentData({...appointmentData, type: e.target.value})}
+                            required
+                          >
+                            <option value="checkup">General Checkup</option>
+                            <option value="vaccination">Vaccination</option>
+                            <option value="grooming">Grooming</option>
+                            <option value="emergency">Emergency</option>
+                            <option value="followup">Follow-up</option>
+                          </select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="appointmentReason">Reason</Label>
+                          <Textarea 
+                            id="appointmentReason"
+                            placeholder="Describe the reason for this appointment..."
+                            value={appointmentData.reason}
+                            onChange={(e) => setAppointmentData({...appointmentData, reason: e.target.value})}
+                            rows={3}
+                            required
+                          />
+                        </div>
+                        <DialogFooter>
+                          <Button type="submit" className="w-full">Schedule Appointment</Button>
+                        </DialogFooter>
+                      </form>
+                    </DialogContent>
+                  </Dialog>
                 </CardContent>
               </Card>
             </div>

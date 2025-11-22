@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Heart, Calendar, FileText, Stethoscope, Bell, User, MessageSquare } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
@@ -21,12 +22,22 @@ const Dashboard = () => {
   const [feedbackRating, setFeedbackRating] = useState(5);
   const [feedbackComment, setFeedbackComment] = useState("");
   const [loading, setLoading] = useState(true);
+  const [profileEditing, setProfileEditing] = useState(false);
 
   // Real data from Supabase
   const [favorites, setFavorites] = useState<any[]>([]);
   const [applications, setApplications] = useState<any[]>([]);
   const [appointments, setAppointments] = useState<any[]>([]);
   const [vaccinations, setVaccinations] = useState<any[]>([]);
+  const [profileData, setProfileData] = useState({
+    first_name: '',
+    last_name: '',
+    phone: '',
+    address: '',
+    city: '',
+    state: '',
+    zip_code: ''
+  });
 
   useEffect(() => {
     if (!user) {
@@ -41,7 +52,8 @@ const Dashboard = () => {
       fetchFavorites(),
       fetchApplications(),
       fetchAppointments(),
-      fetchVaccinations()
+      fetchVaccinations(),
+      fetchProfile()
     ]);
     setLoading(false);
   };
@@ -142,6 +154,48 @@ const Dashboard = () => {
       setVaccinations(data || []);
     } catch (error: any) {
       console.error('Failed to fetch vaccinations:', error);
+    }
+  };
+
+  const fetchProfile = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user?.id)
+        .single();
+
+      if (error) throw error;
+      if (data) {
+        setProfileData({
+          first_name: data.first_name || '',
+          last_name: data.last_name || '',
+          phone: data.phone || '',
+          address: data.address || '',
+          city: data.city || '',
+          state: data.state || '',
+          zip_code: data.zip_code || ''
+        });
+      }
+    } catch (error: any) {
+      console.error('Failed to fetch profile:', error);
+    }
+  };
+
+  const handleUpdateProfile = async () => {
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update(profileData)
+        .eq('id', user?.id);
+
+      if (error) throw error;
+
+      toast.success("Profile updated successfully!");
+      setProfileEditing(false);
+    } catch (error: any) {
+      console.error('Failed to update profile:', error);
+      toast.error("Failed to update profile");
     }
   };
 
@@ -251,18 +305,28 @@ const Dashboard = () => {
                   <CardDescription>Track your adoption requests</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {applications.map(app => (
-                    <div key={app.id} className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
-                      <img src={app.petImage} alt={app.petName} className="h-12 w-12 rounded-full object-cover" />
-                      <div className="flex-1">
-                        <p className="font-semibold">{app.petName}</p>
-                        <p className="text-sm text-muted-foreground">Applied {app.submittedDate}</p>
+                  {applications.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No applications yet</p>
+                  ) : (
+                    applications.map(app => (
+                      <div key={app.id} className="flex items-center gap-4 p-3 rounded-lg bg-muted/50">
+                        <img 
+                          src={app.pets?.image_url || 'https://images.unsplash.com/photo-1450778869180-41d0601e046e?w=100&h=100&fit=crop'} 
+                          alt={app.pets?.name || 'Pet'} 
+                          className="h-12 w-12 rounded-full object-cover" 
+                        />
+                        <div className="flex-1">
+                          <p className="font-semibold">{app.pets?.name || 'Unknown Pet'}</p>
+                          <p className="text-sm text-muted-foreground">
+                            Applied {new Date(app.submitted_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="capitalize">
+                          {app.status.replace('_', ' ')}
+                        </Badge>
                       </div>
-                      <Badge variant="outline" className={`capitalize ${getStatusColor(app.status)}`}>
-                        {app.status.replace('_', ' ')}
-                      </Badge>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </CardContent>
               </Card>
 
@@ -272,20 +336,26 @@ const Dashboard = () => {
                   <CardDescription>Your scheduled vet visits</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {appointments.map(apt => (
-                    <div key={apt.id} className="p-4 rounded-lg bg-muted/50 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <p className="font-semibold">{apt.petName}</p>
-                        <Badge variant="outline">{apt.date}</Badge>
+                  {appointments.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No upcoming appointments</p>
+                  ) : (
+                    appointments.map(apt => (
+                      <div key={apt.id} className="p-4 rounded-lg bg-muted/50 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="font-semibold">{apt.pets?.name || 'Unknown Pet'}</p>
+                          <Badge variant="outline">
+                            {new Date(apt.appointment_date).toLocaleDateString()}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {new Date(apt.appointment_date).toLocaleTimeString()}
+                        </p>
+                        <p className="text-sm">{apt.reason}</p>
                       </div>
-                      <p className="text-sm text-muted-foreground">
-                        {apt.vetName} • {apt.time}
-                      </p>
-                      <p className="text-sm">{apt.reason}</p>
-                    </div>
-                  ))}
-                  <Button variant="outline" className="w-full">
-                    Schedule New Appointment
+                    ))
+                  )}
+                  <Button variant="outline" className="w-full" asChild>
+                    <Link to="/pets">Schedule New Appointment</Link>
                   </Button>
                 </CardContent>
               </Card>
@@ -304,22 +374,30 @@ const Dashboard = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {favorites.map(pet => (
-                    <Card key={pet.id} className="overflow-hidden">
-                      <img src={pet.image} alt={pet.name} className="w-full h-48 object-cover" />
-                      <CardHeader>
-                        <CardTitle className="text-lg">{pet.name}</CardTitle>
-                        <CardDescription>{pet.breed}</CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <Button asChild className="w-full">
-                          <Link to={`/pets/${pet.id}`}>View Details</Link>
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
+                {favorites.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No favorite pets yet</p>
+                ) : (
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {favorites.map(fav => (
+                      <Card key={fav.id} className="overflow-hidden">
+                        <img 
+                          src={fav.pets?.image_url || 'https://images.unsplash.com/photo-1450778869180-41d0601e046e?w=400&h=300&fit=crop'} 
+                          alt={fav.pets?.name || 'Pet'} 
+                          className="w-full h-48 object-cover" 
+                        />
+                        <CardHeader>
+                          <CardTitle className="text-lg">{fav.pets?.name || 'Unknown Pet'}</CardTitle>
+                          <CardDescription>{fav.pets?.breed || fav.pets?.species}</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <Button asChild className="w-full">
+                            <Link to={`/pets/${fav.pets?.id}`}>View Details</Link>
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -333,72 +411,81 @@ const Dashboard = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                {applications.map(app => (
-                  <div key={app.id} className="flex items-center gap-4 p-4 rounded-lg border border-border">
-                    <img src={app.petImage} alt={app.petName} className="h-20 w-20 rounded-lg object-cover" />
-                    <div className="flex-1 space-y-1">
-                      <h3 className="font-semibold text-lg">{app.petName}</h3>
-                      <p className="text-sm text-muted-foreground">Submitted on {app.submittedDate}</p>
-                      <Badge variant="outline" className={`capitalize ${getStatusColor(app.status)}`}>
-                        {app.status.replace('_', ' ')}
-                      </Badge>
-                    </div>
-                    <div className="flex gap-2">
-                      {app.status === "approved" && (
-                        <Dialog open={feedbackDialogOpen && selectedApplication?.id === app.id} onOpenChange={(open) => {
-                          setFeedbackDialogOpen(open);
-                          if (open) setSelectedApplication(app);
-                          else setSelectedApplication(null);
-                        }}>
-                          <DialogTrigger asChild>
-                            <Button variant="outline" size="sm">
-                              <MessageSquare className="w-4 h-4 mr-2" />
-                              Add Feedback
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle>Share Your Adoption Experience</DialogTitle>
-                              <DialogDescription>
-                                Help future adopters by sharing your experience with {app.petName}
-                              </DialogDescription>
-                            </DialogHeader>
-                            <div className="space-y-4">
-                              <div>
-                                <Label>Rating</Label>
-                                <div className="flex gap-2 mt-2">
-                                  {[1, 2, 3, 4, 5].map((star) => (
-                                    <button
-                                      key={star}
-                                      onClick={() => setFeedbackRating(star)}
-                                      className={`text-2xl ${star <= feedbackRating ? "text-yellow-500" : "text-gray-300"}`}
-                                    >
-                                      ★
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                              <div>
-                                <Label htmlFor="feedback">Your Feedback</Label>
-                                <Textarea
-                                  id="feedback"
-                                  placeholder="Share your experience with this pet..."
-                                  value={feedbackComment}
-                                  onChange={(e) => setFeedbackComment(e.target.value)}
-                                  rows={5}
-                                />
-                              </div>
-                              <Button onClick={handleSubmitFeedback} className="w-full">
-                                Submit Feedback
+                {applications.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No applications yet</p>
+                ) : (
+                  applications.map(app => (
+                    <div key={app.id} className="flex items-center gap-4 p-4 rounded-lg border border-border">
+                      <img 
+                        src={app.pets?.image_url || 'https://images.unsplash.com/photo-1450778869180-41d0601e046e?w=100&h=100&fit=crop'} 
+                        alt={app.pets?.name || 'Pet'} 
+                        className="h-20 w-20 rounded-lg object-cover" 
+                      />
+                      <div className="flex-1 space-y-1">
+                        <h3 className="font-semibold text-lg">{app.pets?.name || 'Unknown Pet'}</h3>
+                        <p className="text-sm text-muted-foreground">
+                          Submitted on {new Date(app.submitted_at).toLocaleDateString()}
+                        </p>
+                        <Badge variant="outline" className="capitalize">
+                          {app.status.replace('_', ' ')}
+                        </Badge>
+                      </div>
+                      <div className="flex gap-2">
+                        {app.status === "approved" && (
+                          <Dialog open={feedbackDialogOpen && selectedApplication?.id === app.id} onOpenChange={(open) => {
+                            setFeedbackDialogOpen(open);
+                            if (open) setSelectedApplication(app);
+                            else setSelectedApplication(null);
+                          }}>
+                            <DialogTrigger asChild>
+                              <Button variant="outline" size="sm">
+                                <MessageSquare className="w-4 h-4 mr-2" />
+                                Add Feedback
                               </Button>
-                            </div>
-                          </DialogContent>
-                        </Dialog>
-                      )}
-                      <Button variant="outline">View Application</Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>Share Your Adoption Experience</DialogTitle>
+                                <DialogDescription>
+                                  Help future adopters by sharing your experience with {app.pets?.name}
+                                </DialogDescription>
+                              </DialogHeader>
+                              <div className="space-y-4">
+                                <div>
+                                  <Label>Rating</Label>
+                                  <div className="flex gap-2 mt-2">
+                                    {[1, 2, 3, 4, 5].map((star) => (
+                                      <button
+                                        key={star}
+                                        onClick={() => setFeedbackRating(star)}
+                                        className={`text-2xl ${star <= feedbackRating ? "text-yellow-500" : "text-gray-300"}`}
+                                      >
+                                        ★
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div>
+                                  <Label htmlFor="feedback">Your Feedback</Label>
+                                  <Textarea
+                                    id="feedback"
+                                    placeholder="Share your experience with this pet..."
+                                    value={feedbackComment}
+                                    onChange={(e) => setFeedbackComment(e.target.value)}
+                                    rows={5}
+                                  />
+                                </div>
+                                <Button onClick={handleSubmitFeedback} className="w-full">
+                                  Submit Feedback
+                                </Button>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -414,23 +501,27 @@ const Dashboard = () => {
                   <CardDescription>Manage vet appointments</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {appointments.map(apt => (
-                    <div key={apt.id} className="p-4 rounded-lg bg-muted/50 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <p className="font-semibold">{apt.petName}</p>
-                        <Badge variant="outline">{apt.date}</Badge>
+                  {appointments.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No upcoming appointments</p>
+                  ) : (
+                    appointments.map(apt => (
+                      <div key={apt.id} className="p-4 rounded-lg bg-muted/50 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="font-semibold">{apt.pets?.name || 'Unknown Pet'}</p>
+                          <Badge variant="outline">
+                            {new Date(apt.appointment_date).toLocaleDateString()}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          {new Date(apt.appointment_date).toLocaleTimeString()}
+                        </p>
+                        <p className="text-sm">{apt.reason}</p>
                       </div>
-                      <p className="text-sm text-muted-foreground">
-                        {apt.vetName} • {apt.time}
-                      </p>
-                      <p className="text-sm">{apt.reason}</p>
-                      <div className="flex gap-2 pt-2">
-                        <Button size="sm" variant="outline" className="flex-1">Reschedule</Button>
-                        <Button size="sm" variant="outline" className="flex-1">Cancel</Button>
-                      </div>
-                    </div>
-                  ))}
-                  <Button className="w-full">Book New Appointment</Button>
+                    ))
+                  )}
+                  <Button className="w-full" asChild>
+                    <Link to="/pets">Book New Appointment</Link>
+                  </Button>
                 </CardContent>
               </Card>
 
@@ -443,18 +534,24 @@ const Dashboard = () => {
                   <CardDescription>Keep track of important vaccinations</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {vaccinations.map(vax => (
-                    <div key={vax.id} className="p-4 rounded-lg bg-muted/50 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <p className="font-semibold">{vax.petName}</p>
-                        <Badge variant="outline" className="text-health border-health">
-                          Upcoming
-                        </Badge>
+                  {vaccinations.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No upcoming vaccinations</p>
+                  ) : (
+                    vaccinations.map(vax => (
+                      <div key={vax.id} className="p-4 rounded-lg bg-muted/50 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="font-semibold">{vax.pets?.name || 'Unknown Pet'}</p>
+                          <Badge variant="outline" className="text-health border-health">
+                            {vax.status}
+                          </Badge>
+                        </div>
+                        <p className="text-sm">{vax.vaccine_name} Vaccination</p>
+                        <p className="text-sm text-muted-foreground">
+                          Due: {new Date(vax.due_date).toLocaleDateString()}
+                        </p>
                       </div>
-                      <p className="text-sm">{vax.vaccine} Vaccination</p>
-                      <p className="text-sm text-muted-foreground">Due: {vax.dueDate}</p>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -472,15 +569,115 @@ const Dashboard = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Email</p>
-                  <p className="text-muted-foreground">user@example.com</p>
-                </div>
-                <div className="space-y-2">
-                  <p className="text-sm font-medium">Member Since</p>
-                  <p className="text-muted-foreground">October 2024</p>
-                </div>
-                <Button>Edit Profile</Button>
+                {profileEditing ? (
+                  <>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="firstName">First Name</Label>
+                        <Input
+                          id="firstName"
+                          value={profileData.first_name}
+                          onChange={(e) => setProfileData({...profileData, first_name: e.target.value})}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="lastName">Last Name</Label>
+                        <Input
+                          id="lastName"
+                          value={profileData.last_name}
+                          onChange={(e) => setProfileData({...profileData, last_name: e.target.value})}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="phone">Phone</Label>
+                      <Input
+                        id="phone"
+                        type="tel"
+                        value={profileData.phone}
+                        onChange={(e) => setProfileData({...profileData, phone: e.target.value})}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="address">Address</Label>
+                      <Input
+                        id="address"
+                        value={profileData.address}
+                        onChange={(e) => setProfileData({...profileData, address: e.target.value})}
+                      />
+                    </div>
+                    <div className="grid md:grid-cols-3 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="city">City</Label>
+                        <Input
+                          id="city"
+                          value={profileData.city}
+                          onChange={(e) => setProfileData({...profileData, city: e.target.value})}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="state">State</Label>
+                        <Input
+                          id="state"
+                          value={profileData.state}
+                          onChange={(e) => setProfileData({...profileData, state: e.target.value})}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="zip">ZIP Code</Label>
+                        <Input
+                          id="zip"
+                          value={profileData.zip_code}
+                          onChange={(e) => setProfileData({...profileData, zip_code: e.target.value})}
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button onClick={handleUpdateProfile}>Save Changes</Button>
+                      <Button variant="outline" onClick={() => {
+                        setProfileEditing(false);
+                        fetchProfile();
+                      }}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Email</p>
+                      <p className="text-muted-foreground">{user?.email}</p>
+                    </div>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium">Name</p>
+                        <p className="text-muted-foreground">
+                          {profileData.first_name} {profileData.last_name}
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium">Phone</p>
+                        <p className="text-muted-foreground">{profileData.phone || 'Not set'}</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Address</p>
+                      <p className="text-muted-foreground">
+                        {profileData.address || 'Not set'}
+                        {profileData.city && `, ${profileData.city}`}
+                        {profileData.state && `, ${profileData.state}`}
+                        {profileData.zip_code && ` ${profileData.zip_code}`}
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Member Since</p>
+                      <p className="text-muted-foreground">
+                        {user?.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A'}
+                      </p>
+                    </div>
+                    <Button onClick={() => setProfileEditing(true)}>Edit Profile</Button>
+                  </>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
