@@ -56,6 +56,27 @@ interface Pet {
   created_at: string;
 }
 
+interface Article {
+  id: string;
+  title: string;
+  content: string;
+  category: string;
+  image_url: string | null;
+  author: string | null;
+  created_at: string;
+}
+
+interface Product {
+  id: string;
+  name: string;
+  description: string | null;
+  price: number;
+  category: string;
+  image_url: string | null;
+  stock: number | null;
+  created_at: string;
+}
+
 const Admin = () => {
   const { toast } = useToast();
   const { user, userRole, signOut } = useAuth();
@@ -63,9 +84,15 @@ const Admin = () => {
   const [applications, setApplications] = useState<Application[]>([]);
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
   const [pets, setPets] = useState<Pet[]>([]);
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [petDialogOpen, setPetDialogOpen] = useState(false);
+  const [articleDialogOpen, setArticleDialogOpen] = useState(false);
+  const [productDialogOpen, setProductDialogOpen] = useState(false);
   const [editingPet, setEditingPet] = useState<Pet | null>(null);
+  const [editingArticle, setEditingArticle] = useState<Article | null>(null);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [petFormData, setPetFormData] = useState({
     name: '',
     species: 'dog',
@@ -84,30 +111,52 @@ const Admin = () => {
     image_url: '',
     status: 'available'
   });
+  const [articleFormData, setArticleFormData] = useState({
+    title: '',
+    content: '',
+    category: 'health',
+    image_url: '',
+    author: ''
+  });
+  const [productFormData, setProductFormData] = useState({
+    name: '',
+    description: '',
+    price: '',
+    category: 'food',
+    image_url: '',
+    stock: ''
+  });
 
   // Check if user is admin
   useEffect(() => {
+    console.log('Admin check:', { user: user?.email, userRole, loading });
+    
     if (!user) {
       navigate('/login');
       return;
     }
     if (userRole !== 'admin') {
+      console.log('Not admin! Role is:', userRole);
       toast({
         title: "Access Denied",
-        description: "You don't have admin privileges",
+        description: `You don't have admin privileges. Current role: ${userRole || 'none'}`,
         variant: "destructive"
       });
       navigate('/');
       return;
     }
+    console.log('Admin access granted!');
     fetchAllData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, userRole, navigate]);
 
   const fetchAllData = async () => {
     await Promise.all([
       fetchApplications(),
       fetchFeedbacks(),
-      fetchPets()
+      fetchPets(),
+      fetchArticles(),
+      fetchProducts()
     ]);
   };
 
@@ -179,10 +228,45 @@ const Admin = () => {
     }
   };
 
-  useEffect(() => {
-    fetchApplications();
-    fetchFeedbacks();
-  }, []);
+  const fetchArticles = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('care_articles')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setArticles((data as unknown as Article[]) || []);
+    } catch (error) {
+      console.error('Error fetching articles:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load articles",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const fetchProducts = async () => {
+    try {
+      const { data, error} = await supabase
+        .from('store_products')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setProducts((data as unknown as Product[]) || []);
+    } catch (error) {
+      console.error('Error fetching products:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load products",
+        variant: "destructive"
+      });
+    }
+  };
+
+
 
   const handleApplicationAction = async (applicationId: string, newStatus: string) => {
     try {
@@ -307,11 +391,11 @@ const Admin = () => {
 
       setPetDialogOpen(false);
       fetchPets();
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error saving pet:', error);
       toast({
         title: "Error",
-        description: error.message || "Failed to save pet",
+        description: (error as Error).message || "Failed to save pet",
         variant: "destructive"
       });
     }
@@ -336,11 +420,186 @@ const Admin = () => {
       });
 
       fetchPets();
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error deleting pet:', error);
       toast({
         title: "Error",
-        description: error.message || "Failed to delete pet",
+        description: (error as Error).message || "Failed to delete pet",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Article CRUD handlers
+  const handleAddArticle = () => {
+    setEditingArticle(null);
+    setArticleFormData({
+      title: '',
+      content: '',
+      category: 'health',
+      image_url: '',
+      author: ''
+    });
+    setArticleDialogOpen(true);
+  };
+
+  const handleEditArticle = (article: Article) => {
+    setEditingArticle(article);
+    setArticleFormData({
+      title: article.title,
+      content: article.content,
+      category: article.category,
+      image_url: article.image_url || '',
+      author: article.author || ''
+    });
+    setArticleDialogOpen(true);
+  };
+
+  const handleSaveArticle = async () => {
+    try {
+      const articleData = {
+        title: articleFormData.title,
+        content: articleFormData.content,
+        category: articleFormData.category,
+        image_url: articleFormData.image_url || null,
+        author: articleFormData.author || null
+      };
+
+      if (editingArticle) {
+        const { error } = await supabase
+          .from('care_articles')
+          .update(articleData)
+          .eq('id', editingArticle.id);
+
+        if (error) throw error;
+        toast({ title: "Success", description: "Article updated successfully" });
+      } else {
+        const { error } = await supabase
+          .from('care_articles')
+          .insert([articleData]);
+
+        if (error) throw error;
+        toast({ title: "Success", description: "Article added successfully" });
+      }
+
+      setArticleDialogOpen(false);
+      fetchArticles();
+    } catch (error) {
+      console.error('Error saving article:', error);
+      toast({
+        title: "Error",
+        description: (error as Error).message || "Failed to save article",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleDeleteArticle = async (articleId: string) => {
+    if (!confirm('Are you sure you want to delete this article?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('care_articles')
+        .delete()
+        .eq('id', articleId);
+
+      if (error) throw error;
+      toast({ title: "Success", description: "Article deleted successfully" });
+      fetchArticles();
+    } catch (error) {
+      console.error('Error deleting article:', error);
+      toast({
+        title: "Error",
+        description: (error as Error).message || "Failed to delete article",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Product CRUD handlers
+  const handleAddProduct = () => {
+    setEditingProduct(null);
+    setProductFormData({
+      name: '',
+      description: '',
+      price: '',
+      category: 'food',
+      image_url: '',
+      stock: ''
+    });
+    setProductDialogOpen(true);
+  };
+
+  const handleEditProduct = (product: Product) => {
+    setEditingProduct(product);
+    setProductFormData({
+      name: product.name,
+      description: product.description || '',
+      price: product.price.toString(),
+      category: product.category,
+      image_url: product.image_url || '',
+      stock: product.stock?.toString() || ''
+    });
+    setProductDialogOpen(true);
+  };
+
+  const handleSaveProduct = async () => {
+    try {
+      const productData = {
+        name: productFormData.name,
+        description: productFormData.description || null,
+        price: parseFloat(productFormData.price),
+        category: productFormData.category,
+        image_url: productFormData.image_url || null,
+        stock: productFormData.stock ? parseInt(productFormData.stock) : null
+      };
+
+      if (editingProduct) {
+        const { error } = await supabase
+          .from('store_products')
+          .update(productData)
+          .eq('id', editingProduct.id);
+
+        if (error) throw error;
+        toast({ title: "Success", description: "Product updated successfully" });
+      } else {
+        const { error } = await supabase
+          .from('store_products')
+          .insert([productData]);
+
+        if (error) throw error;
+        toast({ title: "Success", description: "Product added successfully" });
+      }
+
+      setProductDialogOpen(false);
+      fetchProducts();
+    } catch (error) {
+      console.error('Error saving product:', error);
+      toast({
+        title: "Error",
+        description: (error as Error).message || "Failed to save product",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleDeleteProduct = async (productId: string) => {
+    if (!confirm('Are you sure you want to delete this product?')) return;
+
+    try {
+      const { error } = await supabase
+        .from('store_products')
+        .delete()
+        .eq('id', productId);
+
+      if (error) throw error;
+      toast({ title: "Success", description: "Product deleted successfully" });
+      fetchProducts();
+    } catch (error) {
+      console.error('Error deleting product:', error);
+      toast({
+        title: "Error",
+        description: (error as Error).message || "Failed to delete product",
         variant: "destructive"
       });
     }
@@ -446,9 +705,11 @@ const Admin = () => {
           <TabsList>
             <TabsTrigger value="applications">Applications</TabsTrigger>
             <TabsTrigger value="feedbacks">Feedbacks</TabsTrigger>
-            <TabsTrigger value="pets">Manage Pets</TabsTrigger>
+            <TabsTrigger value="pets">Pets</TabsTrigger>
+            <TabsTrigger value="resources">Resources</TabsTrigger>
+            <TabsTrigger value="store">Store</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
-            <TabsTrigger value="logs">System Logs</TabsTrigger>
+            <TabsTrigger value="logs">Logs</TabsTrigger>
           </TabsList>
 
           <TabsContent value="applications" className="space-y-6">
@@ -887,6 +1148,303 @@ const Admin = () => {
                   </Button>
                   <Button onClick={handleSavePet} disabled={!petFormData.name}>
                     {editingPet ? 'Update Pet' : 'Add Pet'}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </TabsContent>
+
+          <TabsContent value="resources" className="space-y-6">
+            <Card className="shadow-card">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Resource Management</CardTitle>
+                    <CardDescription>Manage care articles and pet guides</CardDescription>
+                  </div>
+                  <Button className="gap-2" onClick={handleAddArticle}>
+                    <Plus className="h-4 w-4" />
+                    Add New Article
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <p className="text-muted-foreground">Loading articles...</p>
+                ) : articles.length === 0 ? (
+                  <p className="text-muted-foreground">No articles found. Click "Add New Article" to get started.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {articles.map((article) => (
+                      <div key={article.id} className="flex items-center justify-between p-4 rounded-lg border border-border">
+                        <div className="flex items-center gap-4 flex-1">
+                          {article.image_url && (
+                            <img 
+                              src={article.image_url} 
+                              alt={article.title}
+                              className="w-16 h-16 rounded-lg object-cover"
+                            />
+                          )}
+                          <div className="space-y-1 flex-1">
+                            <p className="font-semibold">{article.title}</p>
+                            <p className="text-sm text-muted-foreground line-clamp-2">{article.content.substring(0, 100)}...</p>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="capitalize">{article.category}</Badge>
+                              {article.author && <span className="text-xs text-muted-foreground">By {article.author}</span>}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" className="gap-1" onClick={() => handleEditArticle(article)}>
+                            <Edit className="h-3 w-3" />
+                            Edit
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="gap-1 text-destructive hover:text-destructive"
+                            onClick={() => handleDeleteArticle(article.id)}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            Delete
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Add/Edit Article Dialog */}
+            <Dialog open={articleDialogOpen} onOpenChange={setArticleDialogOpen}>
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>{editingArticle ? 'Edit Article' : 'Add New Article'}</DialogTitle>
+                  <DialogDescription>
+                    {editingArticle ? 'Update the article information below' : 'Fill in the details for the new article'}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="article-title">Title *</Label>
+                    <Input
+                      id="article-title"
+                      value={articleFormData.title}
+                      onChange={(e) => setArticleFormData({...articleFormData, title: e.target.value})}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="article-category">Category</Label>
+                    <Select value={articleFormData.category} onValueChange={(value) => setArticleFormData({...articleFormData, category: value})}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="health">Health</SelectItem>
+                        <SelectItem value="nutrition">Nutrition</SelectItem>
+                        <SelectItem value="training">Training</SelectItem>
+                        <SelectItem value="behavior">Behavior</SelectItem>
+                        <SelectItem value="grooming">Grooming</SelectItem>
+                        <SelectItem value="general">General</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="article-content">Content *</Label>
+                    <Textarea
+                      id="article-content"
+                      rows={10}
+                      value={articleFormData.content}
+                      onChange={(e) => setArticleFormData({...articleFormData, content: e.target.value})}
+                      placeholder="Write your article content here..."
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="article-author">Author</Label>
+                    <Input
+                      id="article-author"
+                      value={articleFormData.author}
+                      onChange={(e) => setArticleFormData({...articleFormData, author: e.target.value})}
+                      placeholder="Author name"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="article-image">Image URL</Label>
+                    <Input
+                      id="article-image"
+                      type="url"
+                      value={articleFormData.image_url}
+                      onChange={(e) => setArticleFormData({...articleFormData, image_url: e.target.value})}
+                      placeholder="https://example.com/article-image.jpg"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setArticleDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleSaveArticle} disabled={!articleFormData.title || !articleFormData.content}>
+                    {editingArticle ? 'Update Article' : 'Add Article'}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </TabsContent>
+
+          <TabsContent value="store" className="space-y-6">
+            <Card className="shadow-card">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Store Management</CardTitle>
+                    <CardDescription>Manage products and inventory</CardDescription>
+                  </div>
+                  <Button className="gap-2" onClick={handleAddProduct}>
+                    <Plus className="h-4 w-4" />
+                    Add New Product
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <p className="text-muted-foreground">Loading products...</p>
+                ) : products.length === 0 ? (
+                  <p className="text-muted-foreground">No products found. Click "Add New Product" to get started.</p>
+                ) : (
+                  <div className="space-y-4">
+                    {products.map((product) => (
+                      <div key={product.id} className="flex items-center justify-between p-4 rounded-lg border border-border">
+                        <div className="flex items-center gap-4 flex-1">
+                          {product.image_url && (
+                            <img 
+                              src={product.image_url} 
+                              alt={product.name}
+                              className="w-16 h-16 rounded-lg object-cover"
+                            />
+                          )}
+                          <div className="space-y-1 flex-1">
+                            <p className="font-semibold">{product.name}</p>
+                            <p className="text-sm text-muted-foreground line-clamp-1">{product.description}</p>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="capitalize">{product.category}</Badge>
+                              <span className="text-sm font-medium text-primary">${product.price.toFixed(2)}</span>
+                              {product.stock !== null && (
+                                <span className="text-xs text-muted-foreground">Stock: {product.stock}</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" className="gap-1" onClick={() => handleEditProduct(product)}>
+                            <Edit className="h-3 w-3" />
+                            Edit
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="gap-1 text-destructive hover:text-destructive"
+                            onClick={() => handleDeleteProduct(product.id)}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                            Delete
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Add/Edit Product Dialog */}
+            <Dialog open={productDialogOpen} onOpenChange={setProductDialogOpen}>
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>{editingProduct ? 'Edit Product' : 'Add New Product'}</DialogTitle>
+                  <DialogDescription>
+                    {editingProduct ? 'Update the product information below' : 'Fill in the details for the new product'}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="product-name">Product Name *</Label>
+                    <Input
+                      id="product-name"
+                      value={productFormData.name}
+                      onChange={(e) => setProductFormData({...productFormData, name: e.target.value})}
+                      required
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="product-price">Price *</Label>
+                      <Input
+                        id="product-price"
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={productFormData.price}
+                        onChange={(e) => setProductFormData({...productFormData, price: e.target.value})}
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="product-stock">Stock</Label>
+                      <Input
+                        id="product-stock"
+                        type="number"
+                        min="0"
+                        value={productFormData.stock}
+                        onChange={(e) => setProductFormData({...productFormData, stock: e.target.value})}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="product-category">Category</Label>
+                    <Select value={productFormData.category} onValueChange={(value) => setProductFormData({...productFormData, category: value})}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="food">Food</SelectItem>
+                        <SelectItem value="toys">Toys</SelectItem>
+                        <SelectItem value="accessories">Accessories</SelectItem>
+                        <SelectItem value="health">Health</SelectItem>
+                        <SelectItem value="grooming">Grooming</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="product-description">Description</Label>
+                    <Textarea
+                      id="product-description"
+                      rows={4}
+                      value={productFormData.description}
+                      onChange={(e) => setProductFormData({...productFormData, description: e.target.value})}
+                      placeholder="Describe the product..."
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="product-image">Image URL</Label>
+                    <Input
+                      id="product-image"
+                      type="url"
+                      value={productFormData.image_url}
+                      onChange={(e) => setProductFormData({...productFormData, image_url: e.target.value})}
+                      placeholder="https://example.com/product-image.jpg"
+                    />
+                  </div>
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button variant="outline" onClick={() => setProductDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleSaveProduct} disabled={!productFormData.name || !productFormData.price}>
+                    {editingProduct ? 'Update Product' : 'Add Product'}
                   </Button>
                 </div>
               </DialogContent>
