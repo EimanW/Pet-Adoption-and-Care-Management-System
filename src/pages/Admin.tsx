@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
-/* @ts-nocheck - Supabase types don't include care_articles, store_products, store_orders yet */
+// @ts-nocheck
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -289,6 +289,7 @@ const Admin = () => {
 
   const fetchArticles = async () => {
     try {
+      // @ts-ignore - care_articles table not in generated types yet
       const { data, error } = await supabase
         .from('care_articles')
         .select('*')
@@ -308,6 +309,7 @@ const Admin = () => {
 
   const fetchProducts = async () => {
     try {
+      // @ts-ignore - store_products table not in generated types yet
       const { data, error} = await supabase
         .from('store_products')
         .select('*')
@@ -438,6 +440,7 @@ const Admin = () => {
 
   const fetchOrders = async () => {
     try {
+      // @ts-ignore - store_orders table not in generated types yet
       const { data, error } = await supabase
         .from('store_orders')
         .select(`
@@ -662,6 +665,7 @@ const Admin = () => {
       };
 
       if (editingArticle) {
+        // @ts-ignore - care_articles table not in generated types yet
         const { error } = await supabase
           .from('care_articles')
           .update(articleData)
@@ -670,6 +674,7 @@ const Admin = () => {
         if (error) throw error;
         toast({ title: "Success", description: "Article updated successfully" });
       } else {
+        // @ts-ignore - care_articles table not in generated types yet
         const { error } = await supabase
           .from('care_articles')
           .insert([articleData]);
@@ -694,6 +699,7 @@ const Admin = () => {
     if (!confirm('Are you sure you want to delete this article?')) return;
 
     try {
+      // @ts-ignore - care_articles table not in generated types yet
       const { error } = await supabase
         .from('care_articles')
         .delete()
@@ -751,6 +757,7 @@ const Admin = () => {
       };
 
       if (editingProduct) {
+        // @ts-ignore - store_products table not in generated types yet
         const { error } = await supabase
           .from('store_products')
           .update(productData)
@@ -759,6 +766,7 @@ const Admin = () => {
         if (error) throw error;
         toast({ title: "Success", description: "Product updated successfully" });
       } else {
+        // @ts-ignore - store_products table not in generated types yet
         const { error } = await supabase
           .from('store_products')
           .insert([productData]);
@@ -783,6 +791,7 @@ const Admin = () => {
     if (!confirm('Are you sure you want to delete this product?')) return;
 
     try {
+      // @ts-ignore - store_products table not in generated types yet
       const { error } = await supabase
         .from('store_products')
         .delete()
@@ -846,6 +855,7 @@ const Admin = () => {
   // Order handler
   const handleOrderAction = async (orderId: string, newStatus: string) => {
     try {
+      // @ts-ignore - store_orders table not in generated types yet
       const { error } = await supabase
         .from('store_orders')
         .update({ status: newStatus })
