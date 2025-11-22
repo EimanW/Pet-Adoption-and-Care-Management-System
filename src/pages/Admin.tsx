@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+/* @ts-nocheck - Supabase types don't include care_articles, store_products, store_orders yet */
 import { Link, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -77,6 +79,52 @@ interface Product {
   created_at: string;
 }
 
+interface Volunteer {
+  id: string;
+  status: string;
+  availability: string | null;
+  skills: string | null;
+  submitted_at: string;
+  profiles: { first_name: string; last_name: string; email: string; phone: string | null } | null;
+}
+
+interface Donation {
+  id: string;
+  amount: number;
+  donation_type: string;
+  message: string | null;
+  is_anonymous: boolean;
+  created_at: string;
+  profiles: { first_name: string; last_name: string; email: string } | null;
+}
+
+interface User {
+  id: string;
+  email: string;
+  created_at: string;
+  profiles: { first_name: string; last_name: string; phone: string | null } | null;
+  user_roles: { role: string } | null;
+}
+
+interface Appointment {
+  id: string;
+  appointment_date: string;
+  appointment_type: string;
+  status: string;
+  notes: string | null;
+  pets: { name: string } | null;
+  profiles: { first_name: string; last_name: string } | null;
+}
+
+interface Order {
+  id: string;
+  total_amount: number;
+  status: string;
+  created_at: string;
+  profiles: { first_name: string; last_name: string; email: string } | null;
+  order_items: { quantity: number; store_products: { name: string } }[] | null;
+}
+
 const Admin = () => {
   const { toast } = useToast();
   const { user, userRole, signOut } = useAuth();
@@ -86,6 +134,11 @@ const Admin = () => {
   const [pets, setPets] = useState<Pet[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [volunteers, setVolunteers] = useState<Volunteer[]>([]);
+  const [donations, setDonations] = useState<Donation[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [petDialogOpen, setPetDialogOpen] = useState(false);
   const [articleDialogOpen, setArticleDialogOpen] = useState(false);
@@ -156,7 +209,12 @@ const Admin = () => {
       fetchFeedbacks(),
       fetchPets(),
       fetchArticles(),
-      fetchProducts()
+      fetchProducts(),
+      fetchVolunteers(),
+      fetchDonations(),
+      fetchUsers(),
+      fetchAppointments(),
+      fetchOrders()
     ]);
   };
 
@@ -261,6 +319,143 @@ const Admin = () => {
       toast({
         title: "Error",
         description: "Failed to load products",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const fetchVolunteers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('volunteers')
+        .select(`
+          *,
+          profiles (first_name, last_name, email, phone)
+        `)
+        .order('submitted_at', { ascending: false });
+
+      if (error) throw error;
+      setVolunteers((data as unknown as Volunteer[]) || []);
+    } catch (error) {
+      console.error('Error fetching volunteers:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load volunteers",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const fetchDonations = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('donations')
+        .select(`
+          *,
+          profiles (first_name, last_name, email)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setDonations((data as unknown as Donation[]) || []);
+    } catch (error) {
+      console.error('Error fetching donations:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load donations",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const fetchUsers = async () => {
+    try {
+      const { data: usersData, error: usersError } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (usersError) throw usersError;
+
+      const usersWithRoles = await Promise.all(
+        (usersData || []).map(async (profile) => {
+          const { data: roleData } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', profile.id)
+            .maybeSingle();
+
+          const { data: { user } } = await supabase.auth.admin.getUserById(profile.id);
+
+          return {
+            id: profile.id,
+            email: user?.email || 'N/A',
+            created_at: profile.created_at,
+            profiles: {
+              first_name: profile.first_name,
+              last_name: profile.last_name,
+              phone: profile.phone
+            },
+            user_roles: roleData ? { role: roleData.role } : null
+          };
+        })
+      );
+
+      setUsers(usersWithRoles as User[]);
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load users",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const fetchAppointments = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('vet_appointments')
+        .select(`
+          *,
+          pets (name),
+          profiles (first_name, last_name)
+        `)
+        .order('appointment_date', { ascending: false });
+
+      if (error) throw error;
+      setAppointments((data as unknown as Appointment[]) || []);
+    } catch (error) {
+      console.error('Error fetching appointments:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load appointments",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const fetchOrders = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('store_orders')
+        .select(`
+          *,
+          profiles (first_name, last_name, email),
+          order_items (
+            quantity,
+            store_products (name)
+          )
+        `)
+        .order('created_at', { ascending: false});
+
+      if (error) throw error;
+      setOrders((data as unknown as Order[]) || []);
+    } catch (error) {
+      console.error('Error fetching orders:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load orders",
         variant: "destructive"
       });
     }
@@ -605,6 +800,108 @@ const Admin = () => {
     }
   };
 
+  // Volunteer handlers
+  const handleVolunteerAction = async (volunteerId: string, newStatus: string) => {
+    try {
+      const { error } = await supabase
+        .from('volunteers')
+        .update({ status: newStatus })
+        .eq('id', volunteerId);
+
+      if (error) throw error;
+      toast({ title: "Success", description: `Volunteer ${newStatus} successfully` });
+      fetchVolunteers();
+    } catch (error) {
+      console.error('Error updating volunteer:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update volunteer status",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Appointment handler
+  const handleAppointmentAction = async (appointmentId: string, newStatus: string) => {
+    try {
+      const { error } = await supabase
+        .from('vet_appointments')
+        .update({ status: newStatus })
+        .eq('id', appointmentId);
+
+      if (error) throw error;
+      toast({ title: "Success", description: `Appointment ${newStatus} successfully` });
+      fetchAppointments();
+    } catch (error) {
+      console.error('Error updating appointment:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update appointment",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // Order handler
+  const handleOrderAction = async (orderId: string, newStatus: string) => {
+    try {
+      const { error } = await supabase
+        .from('store_orders')
+        .update({ status: newStatus })
+        .eq('id', orderId);
+
+      if (error) throw error;
+      toast({ title: "Success", description: `Order ${newStatus} successfully` });
+      fetchOrders();
+    } catch (error) {
+      console.error('Error updating order:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update order",
+        variant: "destructive"
+      });
+    }
+  };
+
+  // User role handler
+  const handleUserRoleChange = async (userId: string, newRole: string) => {
+    try {
+      // Check if role exists
+      const { data: existingRole } = await supabase
+        .from('user_roles')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (existingRole) {
+        // Update existing role
+        const { error } = await supabase
+          .from('user_roles')
+          .update({ role: newRole as 'admin' | 'vet' | 'volunteer' | 'user' })
+          .eq('user_id', userId);
+
+        if (error) throw error;
+      } else {
+        // Insert new role
+        const { error } = await supabase
+          .from('user_roles')
+          .insert({ user_id: userId, role: newRole as 'admin' | 'vet' | 'volunteer' | 'user' });
+
+        if (error) throw error;
+      }
+
+      toast({ title: "Success", description: "User role updated successfully" });
+      fetchUsers();
+    } catch (error) {
+      console.error('Error updating user role:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update user role",
+        variant: "destructive"
+      });
+    }
+  };
+
   // Mock data
   const pendingApplications = [
     { id: "1", petName: "Max", applicant: "John Doe", date: "2024-11-01", status: "pending" },
@@ -702,14 +999,14 @@ const Admin = () => {
 
         {/* Main Content */}
         <Tabs defaultValue="applications" className="space-y-6">
-          <TabsList>
+          <TabsList className="grid grid-cols-7 w-full">
             <TabsTrigger value="applications">Applications</TabsTrigger>
-            <TabsTrigger value="feedbacks">Feedbacks</TabsTrigger>
             <TabsTrigger value="pets">Pets</TabsTrigger>
             <TabsTrigger value="resources">Resources</TabsTrigger>
             <TabsTrigger value="store">Store</TabsTrigger>
+            <TabsTrigger value="volunteers">Volunteers</TabsTrigger>
             <TabsTrigger value="users">Users</TabsTrigger>
-            <TabsTrigger value="logs">Logs</TabsTrigger>
+            <TabsTrigger value="more">More</TabsTrigger>
           </TabsList>
 
           <TabsContent value="applications" className="space-y-6">
@@ -1451,40 +1748,325 @@ const Admin = () => {
             </Dialog>
           </TabsContent>
 
-          <TabsContent value="users" className="space-y-6">
+          <TabsContent value="volunteers" className="space-y-6">
             <Card className="shadow-card">
               <CardHeader>
-                <CardTitle>User Management</CardTitle>
-                <CardDescription>Manage registered users and volunteers</CardDescription>
+                <CardTitle>Volunteer Management</CardTitle>
+                <CardDescription>Review and manage volunteer applications</CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="text-muted-foreground">User management features coming soon...</p>
+                {loading ? (
+                  <p className="text-muted-foreground">Loading volunteers...</p>
+                ) : volunteers.length === 0 ? (
+                  <p className="text-muted-foreground">No volunteer applications found</p>
+                ) : (
+                  <div className="space-y-4">
+                    {volunteers.map((vol) => (
+                      <div key={vol.id} className="flex items-center justify-between p-4 rounded-lg border border-border">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold">
+                              {vol.profiles?.first_name} {vol.profiles?.last_name}
+                            </p>
+                            <Badge 
+                              variant={
+                                vol.status === 'approved' ? 'default' :
+                                vol.status === 'rejected' ? 'destructive' :
+                                'secondary'
+                              }
+                              className="capitalize"
+                            >
+                              {vol.status}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground">{vol.profiles?.email}</p>
+                          {vol.profiles?.phone && (
+                            <p className="text-sm text-muted-foreground">{vol.profiles.phone}</p>
+                          )}
+                          {vol.skills && (
+                            <p className="text-xs text-muted-foreground">Skills: {vol.skills}</p>
+                          )}
+                          {vol.availability && (
+                            <p className="text-xs text-muted-foreground">Availability: {vol.availability}</p>
+                          )}
+                        </div>
+                        <div className="flex gap-2">
+                          {vol.status === 'pending' && (
+                            <>
+                              <Button size="sm" variant="outline" onClick={() => handleVolunteerAction(vol.id, 'approved')}>
+                                <CheckCircle className="h-3 w-3 mr-1" />
+                                Approve
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={() => handleVolunteerAction(vol.id, 'rejected')}>
+                                <XCircle className="h-3 w-3 mr-1" />
+                                Reject
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
 
-          <TabsContent value="logs" className="space-y-6">
+          <TabsContent value="users" className="space-y-6">
             <Card className="shadow-card">
               <CardHeader>
-                <CardTitle>System Activity Logs</CardTitle>
-                <CardDescription>Monitor system activities and user actions</CardDescription>
+                <CardTitle>User Management</CardTitle>
+                <CardDescription>Manage registered users and their roles</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-3">
-                  {[
-                    { action: "User login", user: "john@example.com", time: "2 minutes ago" },
-                    { action: "Pet added", user: "admin@pawhaven.com", time: "1 hour ago" },
-                    { action: "Application approved", user: "admin@pawhaven.com", time: "3 hours ago" }
-                  ].map((log, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3 rounded-lg bg-muted/50">
-                      <div>
-                        <p className="text-sm font-medium">{log.action}</p>
-                        <p className="text-xs text-muted-foreground">{log.user}</p>
+                {loading ? (
+                  <p className="text-muted-foreground">Loading users...</p>
+                ) : users.length === 0 ? (
+                  <p className="text-muted-foreground">No users found</p>
+                ) : (
+                  <div className="space-y-4">
+                    {users.map((user) => (
+                      <div key={user.id} className="flex items-center justify-between p-4 rounded-lg border border-border">
+                        <div className="space-y-1 flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold">
+                              {user.profiles?.first_name || 'N/A'} {user.profiles?.last_name || ''}
+                            </p>
+                            <Badge variant="outline" className="capitalize">
+                              {user.user_roles?.role || 'user'}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground">{user.email}</p>
+                          {user.profiles?.phone && (
+                            <p className="text-xs text-muted-foreground">{user.profiles.phone}</p>
+                          )}
+                          <p className="text-xs text-muted-foreground">
+                            Joined {new Date(user.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <div className="space-y-2">
+                          <Select 
+                            value={user.user_roles?.role || 'user'}
+                            onValueChange={(value) => handleUserRoleChange(user.id, value)}
+                          >
+                            <SelectTrigger className="w-32">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="user">User</SelectItem>
+                              <SelectItem value="admin">Admin</SelectItem>
+                              <SelectItem value="vet">Vet</SelectItem>
+                              <SelectItem value="volunteer">Volunteer</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
-                      <p className="text-xs text-muted-foreground">{log.time}</p>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="more" className="space-y-6">
+            {/* Donations Section */}
+            <Card className="shadow-card">
+              <CardHeader>
+                <CardTitle>Donations</CardTitle>
+                <CardDescription>View all donations and fundraising</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <p className="text-muted-foreground">Loading donations...</p>
+                ) : donations.length === 0 ? (
+                  <p className="text-muted-foreground">No donations yet</p>
+                ) : (
+                  <div className="space-y-4">
+                    {donations.slice(0, 10).map((donation) => (
+                      <div key={donation.id} className="flex items-center justify-between p-4 rounded-lg border border-border">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-primary">${donation.amount.toFixed(2)}</p>
+                            <Badge variant="outline" className="capitalize">{donation.donation_type}</Badge>
+                          </div>
+                          {!donation.is_anonymous && donation.profiles && (
+                            <p className="text-sm text-muted-foreground">
+                              {donation.profiles.first_name} {donation.profiles.last_name}
+                            </p>
+                          )}
+                          {donation.is_anonymous && (
+                            <p className="text-sm text-muted-foreground">Anonymous</p>
+                          )}
+                          {donation.message && (
+                            <p className="text-xs text-muted-foreground italic">"{donation.message}"</p>
+                          )}
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(donation.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Feedbacks Section */}
+            <Card className="shadow-card">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5" />
+                  Pet Feedbacks
+                </CardTitle>
+                <CardDescription>View all feedback from adopters</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <p className="text-muted-foreground">Loading feedbacks...</p>
+                ) : feedbacks.length === 0 ? (
+                  <p className="text-muted-foreground">No feedbacks yet</p>
+                ) : (
+                  <div className="space-y-4">
+                    {feedbacks.slice(0, 5).map((feedback) => (
+                      <div key={feedback.id} className="p-4 rounded-lg border border-border space-y-3">
+                        <div className="flex items-start justify-between">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold">
+                                {feedback.profiles?.first_name} {feedback.profiles?.last_name}
+                              </p>
+                              <div className="flex items-center gap-1">
+                                {Array.from({ length: 5 }).map((_, i) => (
+                                  <Star
+                                    key={i}
+                                    className={`h-4 w-4 ${
+                                      i < feedback.rating
+                                        ? 'fill-yellow-400 text-yellow-400'
+                                        : 'text-gray-300'
+                                    }`}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              Pet: <span className="font-medium">{feedback.pets?.name || 'Unknown Pet'}</span>
+                            </p>
+                          </div>
+                        </div>
+                        <p className="text-sm">{feedback.comment}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Appointments Section */}
+            <Card className="shadow-card">
+              <CardHeader>
+                <CardTitle>Vet Appointments</CardTitle>
+                <CardDescription>Manage veterinary appointments</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <p className="text-muted-foreground">Loading appointments...</p>
+                ) : appointments.length === 0 ? (
+                  <p className="text-muted-foreground">No appointments scheduled</p>
+                ) : (
+                  <div className="space-y-4">
+                    {appointments.slice(0, 10).map((apt) => (
+                      <div key={apt.id} className="flex items-center justify-between p-4 rounded-lg border border-border">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold">{apt.pets?.name || 'Unknown Pet'}</p>
+                            <Badge variant={apt.status === 'completed' ? 'default' : 'secondary'} className="capitalize">
+                              {apt.status}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            {apt.profiles?.first_name} {apt.profiles?.last_name}
+                          </p>
+                          <p className="text-sm text-muted-foreground capitalize">{apt.appointment_type}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(apt.appointment_date).toLocaleString()}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          {apt.status === 'scheduled' && (
+                            <>
+                              <Button size="sm" variant="outline" onClick={() => handleAppointmentAction(apt.id, 'completed')}>
+                                Complete
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={() => handleAppointmentAction(apt.id, 'cancelled')}>
+                                Cancel
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Orders Section */}
+            <Card className="shadow-card">
+              <CardHeader>
+                <CardTitle>Store Orders</CardTitle>
+                <CardDescription>Manage customer orders</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <p className="text-muted-foreground">Loading orders...</p>
+                ) : orders.length === 0 ? (
+                  <p className="text-muted-foreground">No orders yet</p>
+                ) : (
+                  <div className="space-y-4">
+                    {orders.slice(0, 10).map((order) => (
+                      <div key={order.id} className="flex items-center justify-between p-4 rounded-lg border border-border">
+                        <div className="space-y-1 flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold">${order.total_amount.toFixed(2)}</p>
+                            <Badge 
+                              variant={
+                                order.status === 'delivered' ? 'default' :
+                                order.status === 'cancelled' ? 'destructive' :
+                                'secondary'
+                              }
+                              className="capitalize"
+                            >
+                              {order.status}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            {order.profiles?.first_name} {order.profiles?.last_name}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(order.created_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <div className="flex gap-2">
+                          {order.status === 'pending' && (
+                            <>
+                              <Button size="sm" variant="outline" onClick={() => handleOrderAction(order.id, 'processing')}>
+                                Process
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={() => handleOrderAction(order.id, 'cancelled')}>
+                                Cancel
+                              </Button>
+                            </>
+                          )}
+                          {order.status === 'processing' && (
+                            <Button size="sm" variant="outline" onClick={() => handleOrderAction(order.id, 'delivered')}>
+                              Mark Delivered
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

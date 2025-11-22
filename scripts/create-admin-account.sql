@@ -19,7 +19,7 @@
 -- STEP 3: Replace 'YOUR_USER_ID_HERE' below with the actual UUID and run this query:
 
 INSERT INTO public.user_roles (user_id, role)
-VALUES ('YOUR_USER_ID_HERE', 'admin')
+VALUES ('96ced4c7-60cd-4ca8-a5ea-c72feb0c4e3b', 'admin')
 ON CONFLICT (user_id, role) DO NOTHING;
 
 -- Example (replace the UUID with your actual user ID):
