@@ -5,9 +5,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import petIcon from "@/assets/pet-icon.png";
 import { useAuth } from "@/contexts/AuthContext";
+import { supabase } from "@/integrations/supabase/client";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -21,11 +23,17 @@ const Login = () => {
   const [signupPhone, setSignupPhone] = useState("");
   const [signupPassword, setSignupPassword] = useState("");
   const [signupConfirmPassword, setSignupConfirmPassword] = useState("");
+  const [accountType, setAccountType] = useState("user");
 
   useEffect(() => {
     if (user && userRole) {
+      // Redirect based on role
       if (userRole === "admin") {
         navigate("/admin");
+      } else if (userRole === "vet") {
+        navigate("/vet-portal");
+      } else if (userRole === "volunteer") {
+        navigate("/volunteer-portal");
       } else {
         navigate("/dashboard");
       }
@@ -82,17 +90,40 @@ const Login = () => {
     
     const { error } = await signUp(signupEmail, signupPassword, signupFirstName, signupLastName);
     
-    setIsLoading(false);
-    
     if (error) {
+      setIsLoading(false);
       toast.error("Signup failed", {
         description: error.message || "Please try again."
       });
-    } else {
-      toast.success("Account created!", {
-        description: "Welcome to PawHaven. Let's find your perfect pet!"
-      });
+      return;
     }
+
+    // Get the newly created user
+    const { data: { user: newUser } } = await supabase.auth.getUser();
+    
+    if (newUser && accountType !== "user") {
+      // Assign the selected role
+      const { error: roleError } = await supabase
+        .from('user_roles')
+        .insert({
+          user_id: newUser.id,
+          role: accountType
+        });
+
+      if (roleError) {
+        console.error("Error assigning role:", roleError);
+      }
+    }
+    
+    setIsLoading(false);
+    
+    toast.success("Account created!", {
+      description: accountType === "vet" 
+        ? "Welcome to PawHaven Vet Portal!" 
+        : accountType === "volunteer"
+        ? "Welcome to PawHaven Volunteer Program!"
+        : "Welcome to PawHaven. Let's find your perfect pet!"
+    });
   };
 
   return (
@@ -196,6 +227,20 @@ const Login = () => {
             
             <TabsContent value="signup" className="space-y-4">
               <form onSubmit={handleSignup} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="account-type">I want to sign up as</Label>
+                  <Select value={accountType} onValueChange={setAccountType}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="user">Pet Adopter</SelectItem>
+                      <SelectItem value="vet">Veterinarian</SelectItem>
+                      <SelectItem value="volunteer">Volunteer</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="signup-firstname">First Name</Label>
