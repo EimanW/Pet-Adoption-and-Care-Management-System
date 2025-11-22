@@ -1,11 +1,14 @@
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Heart, Shield, Stethoscope, Users, ArrowRight, PawPrint, Calendar, ShoppingBag } from "lucide-react";
+import { Heart, Shield, Stethoscope, Users, ArrowRight, PawPrint, Calendar, ShoppingBag, UserCog, HeartHandshake } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import heroPets from "@/assets/hero-pets.jpg";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Home = () => {
+  const { userRole } = useAuth();
+  
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
@@ -131,6 +134,65 @@ const Home = () => {
       {/* CTA Sections */}
       <section className="py-16 md:py-24">
         <div className="container">
+          {/* Portal Access Cards - Show based on role */}
+          {(userRole === 'admin' || userRole === 'vet' || userRole === 'volunteer') && (
+            <div className="mb-12">
+              <h2 className="text-2xl md:text-3xl font-bold mb-6 text-center">Quick Portal Access</h2>
+              <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto mb-12">
+                {userRole === 'admin' && (
+                  <Card className="bg-gradient-hero shadow-soft border-0 text-white">
+                    <CardHeader>
+                      <UserCog className="h-10 w-10 mb-2" />
+                      <CardTitle>Admin Portal</CardTitle>
+                      <CardDescription className="text-white/80">
+                        Manage users, pets, applications, and all system operations
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <Button variant="secondary" asChild className="w-full">
+                        <Link to="/admin">Open Admin Portal</Link>
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+                
+                {userRole === 'vet' && (
+                  <Card className="bg-gradient-to-br from-health to-health/80 shadow-soft border-0 text-white">
+                    <CardHeader>
+                      <Stethoscope className="h-10 w-10 mb-2" />
+                      <CardTitle>Vet Portal</CardTitle>
+                      <CardDescription className="text-white/80">
+                        Manage medical records, vaccinations, consultations, and prescriptions
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <Button variant="secondary" asChild className="w-full">
+                        <Link to="/vet-portal">Open Vet Portal</Link>
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+                
+                {userRole === 'volunteer' && (
+                  <Card className="bg-gradient-to-br from-accent to-accent/80 shadow-soft border-0 text-white">
+                    <CardHeader>
+                      <HeartHandshake className="h-10 w-10 mb-2" />
+                      <CardTitle>Volunteer Portal</CardTitle>
+                      <CardDescription className="text-white/80">
+                        View assigned activities, sign up for events, and track your contributions
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <Button variant="secondary" asChild className="w-full">
+                        <Link to="/volunteer-portal">Open Volunteer Portal</Link>
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            </div>
+          )}
+          
           <div className="grid md:grid-cols-3 gap-6">
             <Card className="bg-gradient-card shadow-soft border-0">
               <CardHeader>

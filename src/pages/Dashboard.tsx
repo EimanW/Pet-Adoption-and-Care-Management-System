@@ -8,14 +8,14 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Heart, Calendar, FileText, Stethoscope, Bell, User, MessageSquare } from "lucide-react";
+import { Heart, Calendar, FileText, Stethoscope, Bell, User, MessageSquare, UserCog, HeartHandshake, ArrowRight } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 const Dashboard = () => {
-  const { user } = useAuth();
+  const { user, userRole } = useAuth();
   const navigate = useNavigate();
   const [feedbackDialogOpen, setFeedbackDialogOpen] = useState(false);
   const [selectedApplication, setSelectedApplication] = useState<any>(null);
@@ -246,6 +246,74 @@ const Dashboard = () => {
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
+            {/* Portal Access Cards - Show based on role */}
+            {(userRole === 'admin' || userRole === 'vet' || userRole === 'volunteer') && (
+              <div className="mb-6">
+                <h2 className="text-xl font-semibold mb-4">Quick Portal Access</h2>
+                <div className="grid md:grid-cols-3 gap-4">
+                  {userRole === 'admin' && (
+                    <Card className="bg-gradient-hero shadow-soft border-0 text-white">
+                      <CardHeader className="pb-3">
+                        <UserCog className="h-8 w-8 mb-2" />
+                        <CardTitle className="text-lg">Admin Portal</CardTitle>
+                        <CardDescription className="text-white/80 text-sm">
+                          Manage system operations
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <Button variant="secondary" size="sm" asChild className="w-full">
+                          <Link to="/admin" className="gap-2">
+                            Open Portal
+                            <ArrowRight className="h-3 w-3" />
+                          </Link>
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  )}
+                  
+                  {userRole === 'vet' && (
+                    <Card className="bg-gradient-to-br from-health to-health/80 shadow-soft border-0 text-white">
+                      <CardHeader className="pb-3">
+                        <Stethoscope className="h-8 w-8 mb-2" />
+                        <CardTitle className="text-lg">Vet Portal</CardTitle>
+                        <CardDescription className="text-white/80 text-sm">
+                          Medical records & consultations
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <Button variant="secondary" size="sm" asChild className="w-full">
+                          <Link to="/vet-portal" className="gap-2">
+                            Open Portal
+                            <ArrowRight className="h-3 w-3" />
+                          </Link>
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  )}
+                  
+                  {userRole === 'volunteer' && (
+                    <Card className="bg-gradient-to-br from-accent to-accent/80 shadow-soft border-0 text-white">
+                      <CardHeader className="pb-3">
+                        <HeartHandshake className="h-8 w-8 mb-2" />
+                        <CardTitle className="text-lg">Volunteer Portal</CardTitle>
+                        <CardDescription className="text-white/80 text-sm">
+                          Activities & contributions
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <Button variant="secondary" size="sm" asChild className="w-full">
+                          <Link to="/volunteer-portal" className="gap-2">
+                            Open Portal
+                            <ArrowRight className="h-3 w-3" />
+                          </Link>
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  )}
+                </div>
+              </div>
+            )}
+            
             {/* Stats Cards */}
             <div className="grid md:grid-cols-4 gap-4">
               <Card className="shadow-card">
