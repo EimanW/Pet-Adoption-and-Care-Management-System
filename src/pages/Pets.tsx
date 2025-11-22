@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
@@ -7,32 +7,131 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Heart, Search, MapPin, Calendar } from "lucide-react";
-import { mockPets } from "@/data/mockPets";
-import { Pet, PetType, PetSize } from "@/types/pet";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
+
+interface Pet {
+  id: string;
+  name: string;
+  species: string;
+  breed: string | null;
+  age: number | null;
+  gender: string | null;
+  size: string | null;
+  color: string | null;
+  description: string | null;
+  health_status: string | null;
+  vaccination_status: string | null;
+  spayed_neutered: boolean | null;
+  image_url: string | null;
+  status: string | null;
+  arrival_date: string | null;
+}
 
 const Pets = () => {
+  const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState("");
-  const [typeFilter, setTypeFilter] = useState<PetType | "all">("all");
-  const [sizeFilter, setSizeFilter] = useState<PetSize | "all">("all");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [sizeFilter, setSizeFilter] = useState<string>("all");
+  const [ageFilter, setAgeFilter] = useState<string>("all");
+  const [breedFilter, setBreedFilter] = useState("");
+  const [pets, setPets] = useState<Pet[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const filteredPets = mockPets.filter((pet) => {
-    const matchesSearch = pet.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         pet.breed.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesType = typeFilter === "all" || pet.type === typeFilter;
-    const matchesSize = sizeFilter === "all" || pet.size === sizeFilter;
-    const isAvailable = pet.status === "available";
-    
-    return matchesSearch && matchesType && matchesSize && isAvailable;
-  });
+  // Fetch pets from Supabase
+  useEffect(() => {
+    fetchPets();
+    if (user) {
+      fetchFavorites();
+    }
+  }, [user]);
 
-  const toggleFavorite = (petId: string) => {
-    setFavorites(prev => 
-      prev.includes(petId) 
-        ? prev.filter(id => id !== petId)
-        : [...prev, petId]
-    );
+  const fetchPets = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('pets')
+        .select('*')
+        .eq('status', 'available')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setPets((data as unknown as Pet[]) || []);
+    } catch (error: any) {
+      toast.error("Failed to load pets", {
+        description: error.message
+      });
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const fetchFavorites = async () => {
+    if (!user) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('user_favorites')
+        .select('pet_id')
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+      setFavorites(data?.map(f => f.pet_id) || []);
+    } catch (error: any) {
+      console.error("Failed to load favorites:", error);
+    }
+  };
+
+  const toggleFavorite = async (petId: string) => {
+    if (!user) {
+      toast.error("Please log in to save favorites");
+      return;
+    }
+
+    const isFavorite = favorites.includes(petId);
+
+    try {
+      if (isFavorite) {
+        const { error } = await supabase
+          .from('user_favorites')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('pet_id', petId);
+
+        if (error) throw error;
+        setFavorites(prev => prev.filter(id => id !== petId));
+        toast.success("Removed from favorites");
+      } else {
+        const { error } = await supabase
+          .from('user_favorites')
+          .insert({ user_id: user.id, pet_id: petId });
+
+        if (error) throw error;
+        setFavorites(prev => [...prev, petId]);
+        toast.success("Added to favorites");
+      }
+    } catch (error: any) {
+      toast.error("Failed to update favorites", {
+        description: error.message
+      });
+    }
+  };
+
+  const filteredPets = pets.filter((pet) => {
+    const matchesSearch = 
+      pet.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      pet.breed?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      pet.breed?.toLowerCase().includes(breedFilter.toLowerCase());
+    const matchesType = typeFilter === "all" || pet.species?.toLowerCase() === typeFilter.toLowerCase();
+    const matchesSize = sizeFilter === "all" || pet.size?.toLowerCase() === sizeFilter.toLowerCase();
+    const matchesAge = ageFilter === "all" || 
+      (ageFilter === "young" && (pet.age || 0) <= 2) ||
+      (ageFilter === "adult" && (pet.age || 0) > 2 && (pet.age || 0) <= 7) ||
+      (ageFilter === "senior" && (pet.age || 0) > 7);
+    
+    return matchesSearch && matchesType && matchesSize && matchesAge;
+  });
 
   return (
     <div className="min-h-screen bg-background">
@@ -49,7 +148,7 @@ const Pets = () => {
 
         {/* Filters */}
         <div className="mb-8 space-y-4">
-          <div className="grid md:grid-cols-4 gap-4">
+          <div className="grid md:grid-cols-5 gap-4">
             <div className="md:col-span-2">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -62,7 +161,7 @@ const Pets = () => {
               </div>
             </div>
             
-            <Select value={typeFilter} onValueChange={(value) => setTypeFilter(value as PetType | "all")}>
+            <Select value={typeFilter} onValueChange={setTypeFilter}>
               <SelectTrigger>
                 <SelectValue placeholder="Pet Type" />
               </SelectTrigger>
@@ -76,7 +175,7 @@ const Pets = () => {
               </SelectContent>
             </Select>
             
-            <Select value={sizeFilter} onValueChange={(value) => setSizeFilter(value as PetSize | "all")}>
+            <Select value={sizeFilter} onValueChange={setSizeFilter}>
               <SelectTrigger>
                 <SelectValue placeholder="Size" />
               </SelectTrigger>
@@ -85,6 +184,18 @@ const Pets = () => {
                 <SelectItem value="small">Small</SelectItem>
                 <SelectItem value="medium">Medium</SelectItem>
                 <SelectItem value="large">Large</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={ageFilter} onValueChange={setAgeFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Age" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Ages</SelectItem>
+                <SelectItem value="young">Young (0-2 years)</SelectItem>
+                <SelectItem value="adult">Adult (3-7 years)</SelectItem>
+                <SelectItem value="senior">Senior (8+ years)</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -105,75 +216,74 @@ const Pets = () => {
         </div>
 
         {/* Pet Grid */}
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredPets.map((pet) => (
-            <Card key={pet.id} className="overflow-hidden shadow-card hover:shadow-hover transition-all group">
-              <div className="relative aspect-square overflow-hidden">
-                <img 
-                  src={pet.image} 
-                  alt={pet.name}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                />
-                <Button
-                  size="icon"
-                  variant="secondary"
-                  className="absolute top-2 right-2 shadow-md"
-                  onClick={() => toggleFavorite(pet.id)}
-                >
-                  <Heart 
-                    className={`h-4 w-4 ${favorites.includes(pet.id) ? 'fill-love text-love' : ''}`}
+        {loading ? (
+          <div className="text-center py-12">
+            <p className="text-lg text-muted-foreground">Loading pets...</p>
+          </div>
+        ) : (
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {filteredPets.map((pet) => (
+              <Card key={pet.id} className="overflow-hidden shadow-card hover:shadow-hover transition-all group">
+                <div className="relative aspect-square overflow-hidden">
+                  <img 
+                    src={pet.image_url || 'https://images.unsplash.com/photo-1450778869180-41d0601e046e?w=400&h=400&fit=crop'} 
+                    alt={pet.name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   />
-                </Button>
-                <Badge className="absolute bottom-2 left-2 bg-card/90 backdrop-blur">
-                  ${pet.adoptionFee}
-                </Badge>
-              </div>
-              
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <CardTitle className="text-xl">{pet.name}</CardTitle>
-                    <CardDescription>{pet.breed}</CardDescription>
+                  <Button
+                    size="icon"
+                    variant="secondary"
+                    className="absolute top-2 right-2 shadow-md"
+                    onClick={() => toggleFavorite(pet.id)}
+                  >
+                    <Heart 
+                      className={`h-4 w-4 ${favorites.includes(pet.id) ? 'fill-love text-love' : ''}`}
+                    />
+                  </Button>
+                </div>
+                
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <CardTitle className="text-xl">{pet.name}</CardTitle>
+                      <CardDescription>{pet.breed || pet.species}</CardDescription>
+                    </div>
+                    <Badge variant="outline" className="capitalize">
+                      {pet.species}
+                    </Badge>
                   </div>
-                  <Badge variant="outline" className="capitalize">
-                    {pet.type}
-                  </Badge>
-                </div>
-              </CardHeader>
-              
-              <CardContent className="space-y-2 pb-3">
-                <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <Calendar className="h-3 w-3" />
-                    {pet.age} {pet.age === 1 ? 'year' : 'years'}
-                  </span>
-                  <span className="capitalize">{pet.size}</span>
-                  <span className="capitalize">{pet.gender}</span>
-                </div>
-                <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                  <MapPin className="h-3 w-3" />
-                  {pet.location}
-                </div>
-                <div className="flex gap-2 flex-wrap">
-                  {pet.vaccinated && (
-                    <Badge variant="secondary" className="text-xs">Vaccinated</Badge>
-                  )}
-                  {pet.neutered && (
-                    <Badge variant="secondary" className="text-xs">Neutered</Badge>
-                  )}
-                </div>
-              </CardContent>
-              
-              <CardFooter className="pt-0">
-                <Button asChild className="w-full">
-                  <Link to={`/pets/${pet.id}`}>
-                    View Details
-                  </Link>
-                </Button>
-              </CardFooter>
-            </Card>
-          ))}
-        </div>
+                </CardHeader>
+                
+                <CardContent className="space-y-2 pb-3">
+                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Calendar className="h-3 w-3" />
+                      {pet.age} {pet.age === 1 ? 'year' : 'years'}
+                    </span>
+                    {pet.size && <span className="capitalize">{pet.size}</span>}
+                    {pet.gender && <span className="capitalize">{pet.gender}</span>}
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    {pet.vaccination_status && (
+                      <Badge variant="secondary" className="text-xs">Vaccinated</Badge>
+                    )}
+                    {pet.spayed_neutered && (
+                      <Badge variant="secondary" className="text-xs">Spayed/Neutered</Badge>
+                    )}
+                  </div>
+                </CardContent>
+                
+                <CardFooter className="pt-0">
+                  <Button asChild className="w-full">
+                    <Link to={`/pets/${pet.id}`}>
+                      View Details
+                    </Link>
+                  </Button>
+                </CardFooter>
+              </Card>
+            ))}
+          </div>
+        )}
 
         {filteredPets.length === 0 && (
           <div className="text-center py-12">

@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,64 +10,238 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Heart, MapPin, Calendar, ArrowLeft, CheckCircle, AlertCircle, Stethoscope, Star } from "lucide-react";
-import { mockPets } from "@/data/mockPets";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { PetFeedback } from "@/types/pet";
+
+interface Pet {
+  id: string;
+  name: string;
+  species: string;
+  breed: string | null;
+  age: number | null;
+  gender: string | null;
+  size: string | null;
+  color: string | null;
+  description: string | null;
+  health_status: string | null;
+  vaccination_status: string | null;
+  spayed_neutered: boolean | null;
+  good_with_kids: boolean | null;
+  good_with_pets: boolean | null;
+  energy_level: string | null;
+  image_url: string | null;
+  status: string | null;
+}
+
+interface MedicalRecord {
+  id: string;
+  record_type: string;
+  description: string | null;
+  date: string;
+  veterinarian: string | null;
+  notes: string | null;
+}
+
+interface Feedback {
+  id: string;
+  rating: number;
+  comment: string;
+  created_at: string;
+  profiles: {
+    first_name: string;
+    last_name: string;
+  };
+  adoption_applications: {
+    submitted_at: string;
+  };
+}
 
 const PetDetail = () => {
   const { id } = useParams();
-  const pet = mockPets.find(p => p.id === id);
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [pet, setPet] = useState<Pet | null>(null);
+  const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>([]);
+  const [feedback, setFeedback] = useState<Feedback[]>([]);
   const [isFavorite, setIsFavorite] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // Mock feedback data
-  const mockFeedback: PetFeedback[] = [
-    {
-      id: "1",
-      petId: id || "",
-      userId: "user1",
-      userName: "Sarah Johnson",
-      userEmail: "sarah@example.com",
-      rating: 5,
-      comment: "Max has been the perfect addition to our family! He's so gentle with our kids and loves playing in the backyard. The adoption process was smooth and the staff was very helpful.",
-      adoptionDate: "2024-01-15",
-      submittedDate: "2024-02-01",
-      isVerifiedAdopter: true,
-    },
-    {
-      id: "2",
-      petId: id || "",
-      userId: "user2",
-      userName: "Michael Chen",
-      userEmail: "michael@example.com",
-      rating: 5,
-      comment: "Couldn't be happier with our decision to adopt! The team provided excellent support and answered all our questions. Highly recommend!",
-      adoptionDate: "2024-02-10",
-      submittedDate: "2024-03-05",
-      isVerifiedAdopter: true,
-    },
-  ];
+  // Form state
+  const [formData, setFormData] = useState({
+    homeType: '',
+    hasYard: false,
+    hasOtherPets: false,
+    hasChildren: false,
+    experience: '',
+    reason: ''
+  });
 
-  if (!pet) {
-    return (
-      <div className="min-h-screen bg-background">
-        <Navigation />
-        <div className="container py-12 text-center">
-          <h1 className="text-2xl font-bold mb-4">Pet Not Found</h1>
-          <Button asChild>
-            <Link to="/pets">Back to Pets</Link>
-          </Button>
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (id) {
+      fetchPetDetails();
+      fetchMedicalRecords();
+      fetchFeedback();
+      if (user) {
+        checkFavorite();
+      }
+    }
+  }, [id, user]);
 
-  const handleAdoptionSubmit = (e: React.FormEvent) => {
+  const fetchPetDetails = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('pets')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (error) throw error;
+      setPet(data as unknown as Pet);
+    } catch (error: any) {
+      toast.error("Failed to load pet details", {
+        description: error.message
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchMedicalRecords = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('medical_records')
+        .select('*')
+        .eq('pet_id', id)
+        .order('date', { ascending: false });
+
+      if (error) throw error;
+      setMedicalRecords((data as unknown as MedicalRecord[]) || []);
+    } catch (error: any) {
+      console.error("Failed to load medical records:", error);
+    }
+  };
+
+  const fetchFeedback = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('pet_feedback')
+        .select(`
+          id,
+          rating,
+          comment,
+          created_at,
+          profiles:user_id (first_name, last_name),
+          adoption_applications:adoption_application_id (submitted_at)
+        `)
+        .eq('pet_id', id)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setFeedback((data as unknown as Feedback[]) || []);
+    } catch (error: any) {
+      console.error("Failed to load feedback:", error);
+    }
+  };
+
+  const checkFavorite = async () => {
+    if (!user || !id) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('user_favorites')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('pet_id', id)
+        .maybeSingle();
+
+      if (error && error.code !== 'PGRST116') throw error;
+      setIsFavorite(!!data);
+    } catch (error: any) {
+      console.error("Failed to check favorite:", error);
+    }
+  };
+
+  const toggleFavorite = async () => {
+    if (!user) {
+      toast.error("Please log in to save favorites");
+      navigate('/login');
+      return;
+    }
+
+    try {
+      if (isFavorite) {
+        const { error } = await supabase
+          .from('user_favorites')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('pet_id', id);
+
+        if (error) throw error;
+        setIsFavorite(false);
+        toast.success("Removed from favorites");
+      } else {
+        const { error } = await supabase
+          .from('user_favorites')
+          .insert({ user_id: user.id, pet_id: id });
+
+        if (error) throw error;
+        setIsFavorite(true);
+        toast.success("Added to favorites");
+      }
+    } catch (error: any) {
+      toast.error("Failed to update favorites", {
+        description: error.message
+      });
+    }
+  };
+
+  const handleAdoptionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsDialogOpen(false);
-    toast.success("Adoption request submitted!", {
-      description: "We'll review your application and get back to you soon."
-    });
+    
+    if (!user) {
+      toast.error("Please log in to submit an adoption application");
+      navigate('/login');
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('adoption_applications')
+        .insert({
+          pet_id: id,
+          user_id: user.id,
+          home_type: formData.homeType,
+          has_yard: formData.hasYard,
+          has_other_pets: formData.hasOtherPets,
+          has_children: formData.hasChildren,
+          experience: formData.experience,
+          reason: formData.reason,
+          status: 'pending'
+        });
+
+      if (error) throw error;
+
+      setIsDialogOpen(false);
+      toast.success("Adoption request submitted!", {
+        description: "We'll review your application and get back to you soon."
+      });
+      
+      // Reset form
+      setFormData({
+        homeType: '',
+        hasYard: false,
+        hasOtherPets: false,
+        hasChildren: false,
+        experience: '',
+        reason: ''
+      });
+    } catch (error: any) {
+      toast.error("Failed to submit application", {
+        description: error.message
+      });
+    }
   };
 
   return (

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Navigation from "@/components/Navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -8,33 +8,142 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Heart, Calendar, FileText, Stethoscope, Bell, User, MessageSquare } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Dashboard = () => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
   const [feedbackDialogOpen, setFeedbackDialogOpen] = useState(false);
   const [selectedApplication, setSelectedApplication] = useState<any>(null);
   const [feedbackRating, setFeedbackRating] = useState(5);
   const [feedbackComment, setFeedbackComment] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  // Mock data - would come from backend in real app
-  const favorites = [
-    { id: "1", name: "Max", breed: "Golden Retriever", image: "https://images.unsplash.com/photo-1633722715463-d30f4f325e24?w=400&h=400&fit=crop" },
-    { id: "2", name: "Luna", breed: "Siamese", image: "https://images.unsplash.com/photo-1573865526739-10c1deaeac5e?w=400&h=400&fit=crop" }
-  ];
+  // Real data from Supabase
+  const [favorites, setFavorites] = useState<any[]>([]);
+  const [applications, setApplications] = useState<any[]>([]);
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [vaccinations, setVaccinations] = useState<any[]>([]);
 
-  const applications = [
-    { id: "1", petName: "Max", status: "under_review", submittedDate: "2024-10-28", petImage: "https://images.unsplash.com/photo-1633722715463-d30f4f325e24?w=200&h=200&fit=crop" },
-    { id: "2", petName: "Bella", status: "approved", submittedDate: "2024-10-20", petImage: "https://images.unsplash.com/photo-1596854407944-bf87f6fdd49e?w=200&h=200&fit=crop" }
-  ];
+  useEffect(() => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+    fetchAllData();
+  }, [user, navigate]);
 
-  const appointments = [
-    { id: "1", petName: "Bella", vetName: "Dr. Sarah Johnson", date: "2024-11-10", time: "2:00 PM", reason: "Annual checkup" }
-  ];
+  const fetchAllData = async () => {
+    await Promise.all([
+      fetchFavorites(),
+      fetchApplications(),
+      fetchAppointments(),
+      fetchVaccinations()
+    ]);
+    setLoading(false);
+  };
 
-  const vaccinations = [
-    { id: "1", petName: "Bella", vaccine: "Rabies", dueDate: "2024-12-15", status: "upcoming" }
-  ];
+  const fetchFavorites = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('user_favorites')
+        .select(`
+          id,
+          created_at,
+          pets (
+            id,
+            name,
+            breed,
+            species,
+            image_url
+          )
+        `)
+        .eq('user_id', user?.id);
+
+      if (error) throw error;
+      setFavorites(data || []);
+    } catch (error: any) {
+      console.error('Failed to fetch favorites:', error);
+    }
+  };
+
+  const fetchApplications = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('adoption_applications')
+        .select(`
+          id,
+          status,
+          submitted_at,
+          pets (
+            id,
+            name,
+            image_url
+          )
+        `)
+        .eq('user_id', user?.id)
+        .order('submitted_at', { ascending: false });
+
+      if (error) throw error;
+      setApplications(data || []);
+    } catch (error: any) {
+      console.error('Failed to fetch applications:', error);
+    }
+  };
+
+  const fetchAppointments = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('vet_appointments')
+        .select(`
+          id,
+          appointment_date,
+          reason,
+          status,
+          pets (
+            id,
+            name
+          )
+        `)
+        .eq('user_id', user?.id)
+        .gte('appointment_date', new Date().toISOString())
+        .order('appointment_date', { ascending: true });
+
+      if (error) throw error;
+      setAppointments(data || []);
+    } catch (error: any) {
+      console.error('Failed to fetch appointments:', error);
+    }
+  };
+
+  const fetchVaccinations = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('vaccination_reminders')
+        .select(`
+          id,
+          vaccine_name,
+          due_date,
+          status,
+          pets (
+            id,
+            name
+          )
+        `)
+        .eq('user_id', user?.id)
+        .eq('status', 'pending')
+        .gte('due_date', new Date().toISOString())
+        .order('due_date', { ascending: true });
+
+      if (error) throw error;
+      setVaccinations(data || []);
+    } catch (error: any) {
+      console.error('Failed to fetch vaccinations:', error);
+    }
+  };
 
   const handleSubmitFeedback = () => {
     if (!feedbackComment.trim()) {
