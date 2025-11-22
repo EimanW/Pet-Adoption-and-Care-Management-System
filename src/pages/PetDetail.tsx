@@ -297,6 +297,31 @@ const PetDetail = () => {
     }
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navigation />
+        <div className="container py-8 text-center">
+          <p className="text-lg">Loading pet details...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!pet) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Navigation />
+        <div className="container py-8 text-center">
+          <p className="text-lg mb-4">Pet not found</p>
+          <Button asChild>
+            <Link to="/pets">Back to Pets</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
@@ -315,7 +340,7 @@ const PetDetail = () => {
             <div className="sticky top-24 space-y-4">
               <div className="relative aspect-square rounded-lg overflow-hidden shadow-hover">
                 <img 
-                  src={pet.image} 
+                  src={pet.image_url || '/placeholder.jpg'} 
                   alt={pet.name}
                   className="w-full h-full object-cover"
                 />
@@ -323,18 +348,14 @@ const PetDetail = () => {
                   size="icon"
                   variant="secondary"
                   className="absolute top-4 right-4 shadow-md"
-                  onClick={() => setIsFavorite(!isFavorite)}
+                  onClick={toggleFavorite}
                 >
                   <Heart className={`h-5 w-5 ${isFavorite ? 'fill-love text-love' : ''}`} />
                 </Button>
               </div>
               
               <Card className="shadow-card">
-                <CardHeader>
-                  <CardTitle className="text-2xl">${pet.adoptionFee}</CardTitle>
-                  <CardDescription>Adoption Fee</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
+                <CardContent className="pt-6 space-y-3">
                   <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                     <DialogTrigger asChild>
                       <Button size="lg" className="w-full shadow-soft">
