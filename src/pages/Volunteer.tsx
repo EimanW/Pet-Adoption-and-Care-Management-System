@@ -44,10 +44,9 @@ const Volunteer = () => {
         .from('volunteers')
         .insert({
           user_id: user.id,
-          availability: availability,
-          skills: `${interests}${skills ? ` | ${skills}` : ''}`,
+          availability: [availability],
+          skills: skills ? [interests, skills] : [interests],
           experience: experience,
-          background_check_status: 'pending',
           status: 'pending'
         });
 
