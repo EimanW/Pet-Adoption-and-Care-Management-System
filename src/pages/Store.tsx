@@ -1,10 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Navigation from "@/components/Navigation";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ShoppingCart, Star } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ShoppingCart, Star, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Product {
   id: string;
@@ -16,10 +19,50 @@ interface Product {
   description: string;
 }
 
-const Store = () => {
-  const [cart, setCart] = useState<string[]>([]);
+interface CartItem {
+  product: Product;
+  quantity: number;
+}
 
-  const products: Product[] = [
+const Store = () => {
+  const { user } = useAuth();
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [showCart, setShowCart] = useState(false);
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [products, setProducts] = useState<Product[]>([]);
+
+  // Load products from Supabase
+  useEffect(() => {
+    const fetchProducts = async () => {
+      // @ts-expect-error - Supabase types don't include store_products yet
+      const { data, error } = await supabase
+        .from('store_products')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching products:', error);
+        // Fallback to hardcoded products if database query fails
+        setProducts(hardcodedProducts);
+      } else if (data && data.length > 0) {
+        setProducts(data.map((p: any) => ({
+          id: p.id,
+          name: p.name,
+          category: p.category,
+          price: p.price,
+          rating: 4.7, // Default rating
+          image: p.image_url,
+          description: p.description
+        })));
+      } else {
+        setProducts(hardcodedProducts);
+      }
+    };
+
+    fetchProducts();
+  }, []);
+
+  const hardcodedProducts: Product[] = [
     {
       id: "1",
       name: "Premium Dog Food - 25lb",
@@ -103,11 +146,107 @@ const Store = () => {
     }
   ];
 
-  const addToCart = (productId: string, productName: string) => {
-    setCart([...cart, productId]);
+  const addToCart = (product: Product) => {
+    const existingItem = cart.find(item => item.product.id === product.id);
+    
+    if (existingItem) {
+      setCart(cart.map(item =>
+        item.product.id === product.id
+          ? { ...item, quantity: item.quantity + 1 }
+          : item
+      ));
+    } else {
+      setCart([...cart, { product, quantity: 1 }]);
+    }
+    
     toast.success("Added to cart!", {
-      description: `${productName} has been added to your cart.`
+      description: `${product.name} has been added to your cart.`
     });
+  };
+
+  const removeFromCart = (productId: string) => {
+    setCart(cart.filter(item => item.product.id !== productId));
+  };
+
+  const updateQuantity = (productId: string, newQuantity: number) => {
+    if (newQuantity === 0) {
+      removeFromCart(productId);
+    } else {
+      setCart(cart.map(item =>
+        item.product.id === productId
+          ? { ...item, quantity: newQuantity }
+          : item
+      ));
+    }
+  };
+
+  const getTotalPrice = () => {
+    return cart.reduce((total, item) => total + (item.product.price * item.quantity), 0);
+  };
+
+  const getTotalItems = () => {
+    return cart.reduce((total, item) => total + item.quantity, 0);
+  };
+
+  const handleCheckout = async () => {
+    if (!user) {
+      toast.error("Please log in to place an order");
+      return;
+    }
+
+    if (cart.length === 0) {
+      toast.error("Your cart is empty");
+      return;
+    }
+
+    setIsCheckingOut(true);
+
+    try {
+      const totalAmount = getTotalPrice();
+
+      // @ts-expect-error - Supabase types don't include store_orders yet
+      const { data: orderData, error: orderError } = await supabase
+        .from('store_orders')
+        .insert({
+          user_id: user.id,
+          total_amount: totalAmount,
+          status: 'pending'
+        })
+        .select()
+        .single();
+
+      if (orderError) throw orderError;
+
+      // Insert order items
+      const orderItems = cart.map(item => ({
+        order_id: orderData.id,
+        product_id: item.product.id,
+        quantity: item.quantity,
+        price: item.product.price
+      }));
+
+      // @ts-expect-error - Supabase types don't include order_items yet
+      const { error: itemsError } = await supabase
+        .from('order_items')
+        .insert(orderItems);
+
+      if (itemsError) throw itemsError;
+
+      toast.success("Order placed successfully!", {
+        description: `Your order of $${totalAmount.toFixed(2)} has been placed.`
+      });
+
+      // Clear cart and close dialog
+      setCart([]);
+      setShowCart(false);
+    } catch (error) {
+      console.error('Error placing order:', error);
+      toast.error("Failed to place order", {
+        description: "Please try again or contact support."
+      });
+    } finally {
+      setIsCheckingOut(false);
+    }
   };
 
   const categories = ["All", "Food", "Toys", "Supplies", "Grooming", "Accessories"];
@@ -126,9 +265,9 @@ const Store = () => {
                 Everything your pet needs, delivered to your door
               </p>
             </div>
-            <Button size="lg" className="gap-2">
+            <Button size="lg" className="gap-2" onClick={() => setShowCart(true)}>
               <ShoppingCart className="h-5 w-5" />
-              Cart ({cart.length})
+              Cart ({getTotalItems()})
             </Button>
           </div>
         </div>
@@ -183,7 +322,7 @@ const Store = () => {
               <CardFooter>
                 <Button 
                   className="w-full"
-                  onClick={() => addToCart(product.id, product.name)}
+                  onClick={() => addToCart(product)}
                 >
                   <ShoppingCart className="h-4 w-4 mr-2" />
                   Add to Cart
@@ -218,6 +357,83 @@ const Store = () => {
           </div>
         </div>
       </div>
+
+      {/* Cart Dialog */}
+      <Dialog open={showCart} onOpenChange={setShowCart}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Shopping Cart</DialogTitle>
+            <DialogDescription>
+              {cart.length === 0 ? "Your cart is empty" : `${getTotalItems()} item(s) in cart`}
+            </DialogDescription>
+          </DialogHeader>
+
+          {cart.length > 0 && (
+            <div className="space-y-4">
+              {cart.map((item) => (
+                <div key={item.product.id} className="flex items-center gap-4 p-4 border rounded-lg">
+                  <img 
+                    src={item.product.image} 
+                    alt={item.product.name}
+                    className="w-20 h-20 object-cover rounded"
+                  />
+                  <div className="flex-1">
+                    <h4 className="font-semibold">{item.product.name}</h4>
+                    <p className="text-sm text-muted-foreground">${item.product.price.toFixed(2)} each</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
+                    >
+                      -
+                    </Button>
+                    <span className="w-8 text-center">{item.quantity}</span>
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
+                    >
+                      +
+                    </Button>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-semibold">${(item.product.price * item.quantity).toFixed(2)}</p>
+                    <Button 
+                      size="sm" 
+                      variant="ghost"
+                      onClick={() => removeFromCart(item.product.id)}
+                      className="text-destructive"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+
+              <div className="border-t pt-4">
+                <div className="flex justify-between text-lg font-bold">
+                  <span>Total:</span>
+                  <span>${getTotalPrice().toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCart(false)}>
+              Continue Shopping
+            </Button>
+            <Button 
+              onClick={handleCheckout}
+              disabled={cart.length === 0 || isCheckingOut}
+            >
+              {isCheckingOut ? "Processing..." : "Checkout"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

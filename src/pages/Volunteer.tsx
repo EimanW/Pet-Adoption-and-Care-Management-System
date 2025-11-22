@@ -9,19 +9,65 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Users, Heart, Calendar, Clock } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Volunteer = () => {
+  const { user } = useAuth();
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!agreedToTerms) {
       toast.error("Please agree to the terms and conditions");
       return;
     }
-    toast.success("Application submitted!", {
-      description: "We'll review your application and contact you soon."
-    });
+
+    if (!user) {
+      toast.error("Please log in to submit a volunteer application");
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const form = e.target as HTMLFormElement;
+      
+      const interests = (form.elements.namedItem("interests") as HTMLSelectElement).value;
+      const availability = (form.elements.namedItem("availability") as HTMLSelectElement).value;
+      const experience = (form.elements.namedItem("experience") as HTMLTextAreaElement)?.value || null;
+      const skills = (form.elements.namedItem("skills") as HTMLTextAreaElement)?.value || null;
+      const motivation = (form.elements.namedItem("motivation") as HTMLTextAreaElement).value;
+
+      const { error } = await supabase
+        .from('volunteers')
+        .insert({
+          user_id: user.id,
+          availability: availability,
+          skills: `${interests}${skills ? ` | ${skills}` : ''}`,
+          experience: experience,
+          background_check_status: 'pending',
+          status: 'pending'
+        });
+
+      if (error) throw error;
+
+      toast.success("Application submitted!", {
+        description: "We'll review your application and contact you soon."
+      });
+
+      // Reset form
+      form.reset();
+      setAgreedToTerms(false);
+    } catch (error) {
+      console.error('Error submitting volunteer application:', error);
+      toast.error("Failed to submit application", {
+        description: "Please try again or contact support."
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const opportunities = [
@@ -130,7 +176,7 @@ const Volunteer = () => {
                     
                     <div className="space-y-2">
                       <Label htmlFor="interests">Areas of Interest *</Label>
-                      <Select required>
+                      <Select name="interests" required>
                         <SelectTrigger id="interests">
                           <SelectValue placeholder="Select an area" />
                         </SelectTrigger>
@@ -147,7 +193,7 @@ const Volunteer = () => {
 
                     <div className="space-y-2">
                       <Label htmlFor="availability">Availability *</Label>
-                      <Select required>
+                      <Select name="availability" required>
                         <SelectTrigger id="availability">
                           <SelectValue placeholder="Select your availability" />
                         </SelectTrigger>
@@ -185,6 +231,7 @@ const Volunteer = () => {
                       <Label htmlFor="experience">Do you have experience with pets?</Label>
                       <Textarea 
                         id="experience"
+                        name="experience"
                         placeholder="Tell us about your experience with animals..."
                         rows={3}
                       />
@@ -194,6 +241,7 @@ const Volunteer = () => {
                       <Label htmlFor="skills">Special Skills or Qualifications</Label>
                       <Textarea 
                         id="skills"
+                        name="skills"
                         placeholder="Any relevant skills, certifications, or experience..."
                         rows={3}
                       />
@@ -203,6 +251,7 @@ const Volunteer = () => {
                       <Label htmlFor="motivation">Why do you want to volunteer with us? *</Label>
                       <Textarea 
                         id="motivation"
+                        name="motivation"
                         placeholder="Share your motivation..."
                         rows={4}
                         required
@@ -225,8 +274,8 @@ const Volunteer = () => {
                     </label>
                   </div>
 
-                  <Button type="submit" size="lg" className="w-full">
-                    Submit Application
+                  <Button type="submit" size="lg" className="w-full" disabled={isSubmitting}>
+                    {isSubmitting ? "Submitting..." : "Submit Application"}
                   </Button>
                 </form>
               </CardContent>

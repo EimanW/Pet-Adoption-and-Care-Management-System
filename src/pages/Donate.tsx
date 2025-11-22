@@ -6,27 +6,95 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Heart, DollarSign, Package, Users, CheckCircle } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Donate = () => {
+  const { user } = useAuth();
   const [donationType, setDonationType] = useState<"money" | "supplies">("money");
   const [amount, setAmount] = useState("50");
   const [customAmount, setCustomAmount] = useState("");
+  const [isAnonymous, setIsAnonymous] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleMoneyDonation = (e: React.FormEvent) => {
+  const handleMoneyDonation = async (e: React.FormEvent) => {
     e.preventDefault();
-    const finalAmount = amount === "custom" ? customAmount : amount;
-    toast.success("Thank you for your donation!", {
-      description: `Your $${finalAmount} donation will help care for animals in need.`
-    });
+    setIsSubmitting(true);
+
+    try {
+      const finalAmount = amount === "custom" ? customAmount : amount;
+      const form = e.target as HTMLFormElement;
+      const message = (form.elements.namedItem("message") as HTMLTextAreaElement)?.value || null;
+
+      const { error } = await supabase
+        .from('donations')
+        .insert({
+          user_id: user?.id || null,
+          amount: parseFloat(finalAmount),
+          donation_type: 'money',
+          is_anonymous: isAnonymous,
+          message: message
+        });
+
+      if (error) throw error;
+
+      toast.success("Thank you for your donation!", {
+        description: `Your $${finalAmount} donation will help care for animals in need.`
+      });
+
+      // Reset form
+      form.reset();
+      setAmount("50");
+      setCustomAmount("");
+      setIsAnonymous(false);
+    } catch (error) {
+      console.error('Error saving donation:', error);
+      toast.error("Failed to process donation", {
+        description: "Please try again or contact support."
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleSuppliesDonation = (e: React.FormEvent) => {
+  const handleSuppliesDonation = async (e: React.FormEvent) => {
     e.preventDefault();
-    toast.success("Supply donation registered!", {
-      description: "We'll contact you with pickup/dropoff details."
-    });
+    setIsSubmitting(true);
+
+    try {
+      const form = e.target as HTMLFormElement;
+      const items = (form.elements.namedItem("items") as HTMLTextAreaElement).value;
+
+      const { error } = await supabase
+        .from('donations')
+        .insert({
+          user_id: user?.id || null,
+          amount: 0, // Supply donations don't have monetary value in the system
+          donation_type: 'supplies',
+          is_anonymous: isAnonymous,
+          message: `Supply donation: ${items}`
+        });
+
+      if (error) throw error;
+
+      toast.success("Supply donation registered!", {
+        description: "We'll contact you with pickup/dropoff details."
+      });
+
+      // Reset form
+      form.reset();
+      setIsAnonymous(false);
+    } catch (error) {
+      console.error('Error saving supply donation:', error);
+      toast.error("Failed to register donation", {
+        description: "Please try again or contact support."
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const presetAmounts = ["25", "50", "100", "250", "custom"];
@@ -150,14 +218,26 @@ const Donate = () => {
                       <Label htmlFor="message">Message (Optional)</Label>
                       <Textarea 
                         id="message"
+                        name="message"
                         placeholder="Leave a message of support..."
                         rows={3}
                       />
                     </div>
 
-                    <Button type="submit" size="lg" className="w-full">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox 
+                        id="anonymous"
+                        checked={isAnonymous}
+                        onCheckedChange={(checked) => setIsAnonymous(checked as boolean)}
+                      />
+                      <Label htmlFor="anonymous" className="font-normal">
+                        Make this donation anonymous
+                      </Label>
+                    </div>
+
+                    <Button type="submit" size="lg" className="w-full" disabled={isSubmitting}>
                       <Heart className="mr-2 h-5 w-5" />
-                      Donate ${amount === "custom" ? customAmount || "0" : amount}
+                      {isSubmitting ? "Processing..." : `Donate $${amount === "custom" ? customAmount || "0" : amount}`}
                     </Button>
                   </form>
                 )}
@@ -184,6 +264,7 @@ const Donate = () => {
                       <Label htmlFor="items">Items You're Donating</Label>
                       <Textarea 
                         id="items"
+                        name="items"
                         placeholder="List the items you'd like to donate..."
                         rows={4}
                         required
@@ -208,9 +289,20 @@ const Donate = () => {
                       </RadioGroup>
                     </div>
 
-                    <Button type="submit" size="lg" className="w-full">
+                    <div className="flex items-center space-x-2">
+                      <Checkbox 
+                        id="anonymous-supplies"
+                        checked={isAnonymous}
+                        onCheckedChange={(checked) => setIsAnonymous(checked as boolean)}
+                      />
+                      <Label htmlFor="anonymous-supplies" className="font-normal">
+                        Make this donation anonymous
+                      </Label>
+                    </div>
+
+                    <Button type="submit" size="lg" className="w-full" disabled={isSubmitting}>
                       <Package className="mr-2 h-5 w-5" />
-                      Submit Supply Donation
+                      {isSubmitting ? "Submitting..." : "Submit Supply Donation"}
                     </Button>
                   </form>
                 )}
