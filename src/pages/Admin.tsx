@@ -17,6 +17,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
+import { populateSamplePets } from "@/scripts/populatePets";
 
 interface Application {
   id: string;
@@ -2067,6 +2068,37 @@ const Admin = () => {
                     ))}
                   </div>
                 )}
+              </CardContent>
+            </Card>
+
+            {/* Database Tools Section */}
+            <Card className="shadow-card">
+              <CardHeader>
+                <CardTitle>Database Tools</CardTitle>
+                <CardDescription>Initialize and manage database content</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between p-4 rounded-lg border border-border">
+                  <div className="space-y-1">
+                    <p className="font-semibold">Populate Sample Pets</p>
+                    <p className="text-sm text-muted-foreground">
+                      Add 8 sample pets to the database (Max, Luna, Charlie, Bella, Rocky, Milo, Daisy, Cooper)
+                    </p>
+                  </div>
+                  <Button 
+                    onClick={async () => {
+                      const { success, message } = await populateSamplePets();
+                      if (success) {
+                        toast({ title: "Success", description: message });
+                        fetchAllData();
+                      } else {
+                        toast({ title: "Error", description: message, variant: "destructive" });
+                      }
+                    }}
+                  >
+                    Add Sample Pets
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>
