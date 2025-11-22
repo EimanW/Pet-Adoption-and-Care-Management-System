@@ -1,5 +1,3 @@
-'use client';
-
 import { useRef, useEffect, useCallback } from 'react';
 import gsap from 'gsap';
 import './BlobCursor.css';
@@ -59,7 +57,7 @@ export default function BlobCursor({
   }, []);
 
   const handleMove = useCallback(
-    (e: React.MouseEvent | React.TouchEvent) => {
+    (e: MouseEvent | TouchEvent) => {
       const { left, top } = updateOffset();
       const x = 'clientX' in e ? e.clientX : e.touches[0].clientX;
       const y = 'clientY' in e ? e.clientY : e.touches[0].clientY;
@@ -84,13 +82,24 @@ export default function BlobCursor({
     return () => window.removeEventListener('resize', onResize);
   }, [updateOffset]);
 
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => handleMove(e);
+    const handleTouchMove = (e: TouchEvent) => handleMove(e);
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('touchmove', handleTouchMove);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('touchmove', handleTouchMove);
+    };
+  }, [handleMove]);
+
   return (
     <div
       ref={containerRef}
       className="blob-container"
       style={{ zIndex }}
-      onMouseMove={handleMove}
-      onTouchMove={handleMove}
     >
       {useFilter && (
         <svg style={{ position: 'absolute', width: 0, height: 0 }}>

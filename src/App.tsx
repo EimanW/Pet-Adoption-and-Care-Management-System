@@ -27,7 +27,7 @@ const App = () => (
       <Sonner />
       <BlobCursor
         blobType="circle"
-        fillColor="#5227FF"
+        fillColor="hsl(var(--primary))"
         trailCount={3}
         sizes={[60, 125, 75]}
         innerSizes={[20, 35, 25]}
@@ -41,7 +41,7 @@ const App = () => (
         useFilter={true}
         fastDuration={0.1}
         slowDuration={0.5}
-        zIndex={100}
+        zIndex={9999}
       />
       <BrowserRouter>
         <AuthProvider>
