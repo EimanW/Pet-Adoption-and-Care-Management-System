@@ -375,27 +375,34 @@ const Admin = () => {
     try {
       const { data: usersData, error: usersError } = await supabase
         .from('profiles')
-        .select(`
-          *,
-          user_roles (role)
-        `)
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (usersError) throw usersError;
 
-      const usersFormatted = (usersData || []).map((profile) => ({
-        id: profile.id,
-        email: profile.email || 'N/A',
-        created_at: profile.created_at,
-        profiles: {
-          first_name: profile.first_name,
-          last_name: profile.last_name,
-          phone: profile.phone
-        },
-        user_roles: profile.user_roles?.[0] || null
-      }));
+      const usersWithRoles = await Promise.all(
+        (usersData || []).map(async (profile) => {
+          const { data: roleData } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', profile.id)
+            .maybeSingle();
 
-      setUsers(usersFormatted as User[]);
+          return {
+            id: profile.id,
+            email: profile.email || 'N/A',
+            created_at: profile.created_at,
+            profiles: {
+              first_name: profile.first_name,
+              last_name: profile.last_name,
+              phone: profile.phone
+            },
+            user_roles: roleData ? { role: roleData.role } : null
+          };
+        })
+      );
+
+      setUsers(usersWithRoles as User[]);
     } catch (error) {
       console.error('Error fetching users:', error);
       toast({
