@@ -383,7 +383,7 @@ const Admin = () => {
 
       if (usersError) throw usersError;
 
-      const usersWithRoles = (usersData || []).map((profile) => ({
+      const usersFormatted = (usersData || []).map((profile) => ({
         id: profile.id,
         email: profile.email || 'N/A',
         created_at: profile.created_at,
@@ -395,7 +395,7 @@ const Admin = () => {
         user_roles: profile.user_roles?.[0] || null
       }));
 
-      setUsers(usersWithRoles as User[]);
+      setUsers(usersFormatted as User[]);
     } catch (error) {
       console.error('Error fetching users:', error);
       toast({
