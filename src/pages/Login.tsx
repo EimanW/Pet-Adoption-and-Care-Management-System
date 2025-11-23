@@ -24,6 +24,9 @@ const Login = () => {
   const [signupPassword, setSignupPassword] = useState("");
   const [signupConfirmPassword, setSignupConfirmPassword] = useState("");
   const [accountType, setAccountType] = useState("user");
+  const [volunteerAvailability, setVolunteerAvailability] = useState("");
+  const [volunteerSkills, setVolunteerSkills] = useState("");
+  const [volunteerExperience, setVolunteerExperience] = useState("");
 
   useEffect(() => {
     if (user && userRole) {
@@ -102,16 +105,36 @@ const Login = () => {
     const { data: { user: newUser } } = await supabase.auth.getUser();
     
     if (newUser && accountType !== "user") {
-      // Assign the selected role
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .insert({
-          user_id: newUser.id,
-          role: accountType
-        });
+      // Only assign role for vet and admin, NOT for volunteer
+      // Volunteers get role assigned when admin approves them
+      if (accountType === "vet") {
+        const { error: roleError } = await supabase
+          .from('user_roles')
+          .insert({
+            user_id: newUser.id,
+            role: accountType
+          });
 
-      if (roleError) {
-        console.error("Error assigning role:", roleError);
+        if (roleError) {
+          console.error("Error assigning role:", roleError);
+        }
+      }
+
+      // If volunteer, insert into volunteers table (no role assignment yet)
+      if (accountType === "volunteer" && newUser) {
+        const { error: volunteerError } = await supabase
+          .from('volunteers')
+          .insert({
+            user_id: newUser.id,
+            availability: volunteerAvailability ? [volunteerAvailability] : [],
+            skills: volunteerSkills ? [volunteerSkills] : [],
+            experience: volunteerExperience,
+            status: 'pending'
+          });
+
+        if (volunteerError) {
+          console.error("Error creating volunteer record:", volunteerError);
+        }
       }
     }
     
@@ -119,9 +142,9 @@ const Login = () => {
     
     toast.success("Account created!", {
       description: accountType === "vet" 
-        ? "Welcome to PawHaven Vet Portal!" 
+        ? "Welcome to PawHaven Vet Portal!"
         : accountType === "volunteer"
-        ? "Welcome to PawHaven Volunteer Program!"
+        ? "Your volunteer application is pending approval."
         : "Welcome to PawHaven. Let's find your perfect pet!"
     });
   };
@@ -234,7 +257,7 @@ const Login = () => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="user">Pet Adopter</SelectItem>
+                      <SelectItem value="user">Adopter</SelectItem>
                       <SelectItem value="vet">Veterinarian</SelectItem>
                       <SelectItem value="volunteer">Volunteer</SelectItem>
                     </SelectContent>
@@ -308,6 +331,42 @@ const Login = () => {
                     required
                   />
                 </div>
+                
+                {accountType === "volunteer" && (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="volunteer-availability">Availability</Label>
+                      <Input 
+                        id="volunteer-availability" 
+                        placeholder="e.g., Weekends, Mon-Fri evenings"
+                        value={volunteerAvailability}
+                        onChange={(e) => setVolunteerAvailability(e.target.value)}
+                        required
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="volunteer-skills">Skills</Label>
+                      <Input 
+                        id="volunteer-skills" 
+                        placeholder="e.g., Animal care, Administrative, Events"
+                        value={volunteerSkills}
+                        onChange={(e) => setVolunteerSkills(e.target.value)}
+                        required
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="volunteer-experience">Experience</Label>
+                      <Input 
+                        id="volunteer-experience" 
+                        placeholder="Previous volunteer or animal care experience"
+                        value={volunteerExperience}
+                        onChange={(e) => setVolunteerExperience(e.target.value)}
+                      />
+                    </div>
+                  </>
+                )}
                 
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? "Creating account..." : "Create Account"}

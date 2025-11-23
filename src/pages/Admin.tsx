@@ -144,6 +144,8 @@ const Admin = () => {
   const [petDialogOpen, setPetDialogOpen] = useState(false);
   const [articleDialogOpen, setArticleDialogOpen] = useState(false);
   const [productDialogOpen, setProductDialogOpen] = useState(false);
+  const [applicationDetailsOpen, setApplicationDetailsOpen] = useState(false);
+  const [selectedApplication, setSelectedApplication] = useState<Application | null>(null);
   const [editingPet, setEditingPet] = useState<Pet | null>(null);
   const [editingArticle, setEditingArticle] = useState<Article | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -222,22 +224,68 @@ const Admin = () => {
   // Fetch adoption applications
   const fetchApplications = async () => {
     try {
-      const { data, error } = await supabase
+      console.log('Fetching applications as admin...');
+      
+      // Get current user info
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      console.log('Current user ID:', currentUser?.id);
+      
+      // Check admin role
+      const { data: roleData, error: roleError } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', currentUser?.id)
+        .maybeSingle();
+      
+      console.log('User role check:', roleData, 'Error:', roleError);
+      
+      // Fetch applications without joins first
+      const { data: appsData, error: appsError } = await supabase
         .from('adoption_applications')
-        .select(`
-          *,
-          pets (name, image_url),
-          profiles (first_name, last_name, email)
-        `)
+        .select('*')
         .order('submitted_at', { ascending: false });
 
-      if (error) throw error;
-      setApplications((data as unknown as Application[]) || []);
+      if (appsError) {
+        console.error('Fetch error details:', JSON.stringify(appsError, null, 2));
+        throw appsError;
+      }
+
+      // Fetch related data separately
+      const data = await Promise.all((appsData || []).map(async (app) => {
+        // Fetch pet info
+        const { data: petData } = await supabase
+          .from('pets')
+          .select('name, image_url')
+          .eq('id', app.pet_id)
+          .single();
+        
+        // Fetch profile info
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('first_name, last_name, email')
+          .eq('id', app.user_id)
+          .single();
+        
+        return {
+          ...app,
+          pets: petData,
+          profiles: profileData
+        };
+      }));
+
+      console.log('Applications fetch result:', {
+        count: data.length,
+        sampleData: data[0]
+      });
+      
+      setApplications(data as Application[]);
+      
+      console.log(`Successfully loaded ${data.length} applications`);
     } catch (error) {
       console.error('Error fetching applications:', error);
       toast({
         title: "Error",
-        description: "Failed to load adoption applications",
+        description: `Failed to load adoption applications: ${(error as Error).message}`,
         variant: "destructive"
       });
     } finally {
@@ -247,17 +295,38 @@ const Admin = () => {
 
   const fetchFeedbacks = async () => {
     try {
-      const { data, error } = await supabase
+      // Fetch feedbacks without joins first
+      const { data: feedbacksData, error } = await supabase
         .from('pet_feedback')
-        .select(`
-          *,
-          pets (name, image_url),
-          profiles (first_name, last_name, email)
-        `)
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setFeedbacks((data as unknown as Feedback[]) || []);
+
+      // Fetch related data separately
+      const data = await Promise.all((feedbacksData || []).map(async (feedback) => {
+        // Fetch pet info
+        const { data: petData } = await supabase
+          .from('pets')
+          .select('name, image_url')
+          .eq('id', feedback.pet_id)
+          .single();
+        
+        // Fetch profile info
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('first_name, last_name, email')
+          .eq('id', feedback.user_id)
+          .single();
+        
+        return {
+          ...feedback,
+          pets: petData,
+          profiles: profileData
+        };
+      }));
+
+      setFeedbacks(data as Feedback[]);
     } catch (error) {
       console.error('Error fetching feedbacks:', error);
       toast({
@@ -329,16 +398,30 @@ const Admin = () => {
 
   const fetchVolunteers = async () => {
     try {
-      const { data, error } = await supabase
+      // Fetch volunteers without joins first
+      const { data: volunteersData, error } = await supabase
         .from('volunteers')
-        .select(`
-          *,
-          profiles (first_name, last_name, email, phone)
-        `)
-        .order('submitted_at', { ascending: false });
+        .select('*')
+        .order('application_date', { ascending: false });
 
       if (error) throw error;
-      setVolunteers((data as unknown as Volunteer[]) || []);
+
+      // Fetch related data separately
+      const data = await Promise.all((volunteersData || []).map(async (vol) => {
+        // Fetch profile info
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('first_name, last_name, email, phone')
+          .eq('id', vol.user_id)
+          .single();
+        
+        return {
+          ...vol,
+          profiles: profileData
+        };
+      }));
+
+      setVolunteers(data as Volunteer[]);
     } catch (error) {
       console.error('Error fetching volunteers:', error);
       toast({
@@ -351,16 +434,37 @@ const Admin = () => {
 
   const fetchDonations = async () => {
     try {
-      const { data, error } = await supabase
+      // Fetch donations without joins first
+      const { data: donationsData, error } = await supabase
         .from('donations')
-        .select(`
-          *,
-          profiles (first_name, last_name, email)
-        `)
+        .select('*')
         .order('created_at', { ascending: false });
 
       if (error) throw error;
-      setDonations((data as unknown as Donation[]) || []);
+
+      // Fetch related data separately
+      const data = await Promise.all((donationsData || []).map(async (donation) => {
+        // Fetch profile info if not anonymous
+        if (donation.user_id) {
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('first_name, last_name, email')
+            .eq('id', donation.user_id)
+            .single();
+          
+          return {
+            ...donation,
+            profiles: profileData
+          };
+        }
+        
+        return {
+          ...donation,
+          profiles: null
+        };
+      }));
+
+      setDonations(data as Donation[]);
     } catch (error) {
       console.error('Error fetching donations:', error);
       toast({
@@ -415,17 +519,38 @@ const Admin = () => {
 
   const fetchAppointments = async () => {
     try {
-      const { data, error } = await supabase
+      // Fetch appointments without joins first
+      const { data: appointmentsData, error } = await supabase
         .from('vet_appointments')
-        .select(`
-          *,
-          pets (name),
-          profiles (first_name, last_name)
-        `)
+        .select('*')
         .order('appointment_date', { ascending: false });
 
       if (error) throw error;
-      setAppointments((data as unknown as Appointment[]) || []);
+
+      // Fetch related data separately
+      const data = await Promise.all((appointmentsData || []).map(async (apt) => {
+        // Fetch pet info
+        const { data: petData } = await supabase
+          .from('pets')
+          .select('name')
+          .eq('id', apt.pet_id)
+          .single();
+        
+        // Fetch profile info
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('first_name, last_name')
+          .eq('id', apt.user_id)
+          .single();
+        
+        return {
+          ...apt,
+          pets: petData,
+          profiles: profileData
+        };
+      }));
+
+      setAppointments(data as Appointment[]);
     } catch (error) {
       console.error('Error fetching appointments:', error);
       toast({
@@ -438,21 +563,40 @@ const Admin = () => {
 
   const fetchOrders = async () => {
     try {
-      // @ts-ignore - store_orders table not in generated types yet
-      const { data, error } = await supabase
+      // Fetch orders without joins first
+      const { data: ordersData, error } = await supabase
         .from('store_orders')
-        .select(`
-          *,
-          profiles (first_name, last_name, email),
-          order_items (
-            quantity,
-            store_products (name)
-          )
-        `)
+        .select('*')
         .order('created_at', { ascending: false});
 
       if (error) throw error;
-      setOrders((data as unknown as Order[]) || []);
+
+      // Fetch related data separately
+      const data = await Promise.all((ordersData || []).map(async (order) => {
+        // Fetch profile info
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('first_name, last_name, email')
+          .eq('id', order.user_id)
+          .single();
+        
+        // Fetch order items
+        const { data: itemsData } = await supabase
+          .from('order_items')
+          .select(`
+            quantity,
+            store_products (name)
+          `)
+          .eq('order_id', order.id);
+        
+        return {
+          ...order,
+          profiles: profileData,
+          order_items: itemsData
+        };
+      }));
+
+      setOrders(data as Order[]);
     } catch (error) {
       console.error('Error fetching orders:', error);
       toast({
@@ -563,12 +707,36 @@ const Admin = () => {
 
       if (editingPet) {
         // Update existing pet
-        const { error } = await supabase
+        console.log('Updating pet:', editingPet.id, 'with data:', petData);
+        
+        // First, verify current user role
+        const { data: { user } } = await supabase.auth.getUser();
+        console.log('Current user:', user?.id);
+        
+        const { data: roleData } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user?.id)
+          .single();
+        console.log('User role:', roleData);
+        
+        const { data, error, count } = await supabase
           .from('pets')
           .update(petData)
-          .eq('id', editingPet.id);
+          .eq('id', editingPet.id)
+          .select();
 
-        if (error) throw error;
+        console.log('Update response - data:', data, 'error:', error, 'count:', count);
+        
+        if (error) {
+          console.error('Update error details:', JSON.stringify(error, null, 2));
+          throw error;
+        }
+        
+        if (!data || data.length === 0) {
+          throw new Error('No rows were updated. This might be a permissions issue.');
+        }
+        
         toast({
           title: "Success",
           description: "Pet updated successfully"
@@ -587,7 +755,9 @@ const Admin = () => {
       }
 
       setPetDialogOpen(false);
-      fetchPets();
+      setEditingPet(null);
+      // Force a fresh fetch
+      await fetchPets();
     } catch (error) {
       console.error('Error saving pet:', error);
       toast({
@@ -811,12 +981,50 @@ const Admin = () => {
   // Volunteer handlers
   const handleVolunteerAction = async (volunteerId: string, newStatus: string) => {
     try {
+      // Get the volunteer record to get user_id
+      const { data: volunteer, error: fetchError } = await supabase
+        .from('volunteers')
+        .select('user_id')
+        .eq('id', volunteerId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      // Update volunteer status
       const { error } = await supabase
         .from('volunteers')
         .update({ status: newStatus })
         .eq('id', volunteerId);
 
       if (error) throw error;
+
+      // If approving, assign volunteer role to user
+      if (newStatus === 'approved' && volunteer) {
+        const { error: roleError } = await supabase
+          .from('user_roles')
+          .upsert({ 
+            user_id: volunteer.user_id, 
+            role: 'volunteer' 
+          });
+
+        if (roleError) {
+          console.error('Error assigning volunteer role:', roleError);
+        }
+      }
+
+      // If rejecting, remove volunteer role if it exists
+      if (newStatus === 'rejected' && volunteer) {
+        const { error: roleError } = await supabase
+          .from('user_roles')
+          .delete()
+          .eq('user_id', volunteer.user_id)
+          .eq('role', 'volunteer');
+
+        if (roleError) {
+          console.error('Error removing volunteer role:', roleError);
+        }
+      }
+
       toast({ title: "Success", description: `Volunteer ${newStatus} successfully` });
       fetchVolunteers();
     } catch (error) {
@@ -1035,7 +1243,13 @@ const Admin = () => {
                 {loading ? (
                   <p className="text-muted-foreground">Loading applications...</p>
                 ) : applications.length === 0 ? (
-                  <p className="text-muted-foreground">No applications found</p>
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground mb-2">No applications found</p>
+                    <p className="text-xs text-yellow-600 dark:text-yellow-500">
+                      ⚠️ If you expect to see applications, check the browser console for errors.
+                      You may need to run the SQL fixes in CRITICAL_FIXES_NEEDED.sql
+                    </p>
+                  </div>
                 ) : (
                   <div className="space-y-4">
                     {applications.map((app) => (
@@ -1091,7 +1305,14 @@ const Admin = () => {
                               </Button>
                             </>
                           )}
-                          <Button size="sm" variant="outline">
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedApplication(app);
+                              setApplicationDetailsOpen(true);
+                            }}
+                          >
                             View Details
                           </Button>
                         </div>
@@ -1101,6 +1322,146 @@ const Admin = () => {
                 )}
               </CardContent>
             </Card>
+
+            {/* Application Details Dialog */}
+            <Dialog open={applicationDetailsOpen} onOpenChange={setApplicationDetailsOpen}>
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Application Details</DialogTitle>
+                  <DialogDescription>
+                    Complete information about this adoption application
+                  </DialogDescription>
+                </DialogHeader>
+                {selectedApplication && (
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-4 p-4 bg-muted rounded-lg">
+                      {selectedApplication.pets?.image_url && (
+                        <img 
+                          src={selectedApplication.pets.image_url} 
+                          alt={selectedApplication.pets.name || 'Pet'} 
+                          className="w-24 h-24 rounded-lg object-cover" 
+                        />
+                      )}
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold">{selectedApplication.pets?.name || 'Unknown Pet'}</h3>
+                        <Badge variant="outline" className="capitalize mt-1">
+                          {selectedApplication.status.replace('_', ' ')}
+                        </Badge>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label className="text-sm font-medium">Applicant Name</Label>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {selectedApplication.profiles?.first_name} {selectedApplication.profiles?.last_name}
+                        </p>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium">Email</Label>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {selectedApplication.profiles?.email}
+                        </p>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium">Home Type</Label>
+                        <p className="text-sm text-muted-foreground mt-1 capitalize">
+                          {selectedApplication.home_type || 'Not specified'}
+                        </p>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium">Has Yard</Label>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {selectedApplication.has_yard ? 'Yes' : 'No'}
+                        </p>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium">Has Other Pets</Label>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {selectedApplication.has_other_pets ? 'Yes' : 'No'}
+                        </p>
+                      </div>
+                      <div>
+                        <Label className="text-sm font-medium">Has Children</Label>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {selectedApplication.has_children ? 'Yes' : 'No'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {selectedApplication.experience && (
+                      <div>
+                        <Label className="text-sm font-medium">Pet Experience</Label>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {selectedApplication.experience}
+                        </p>
+                      </div>
+                    )}
+
+                    {selectedApplication.reason && (
+                      <div>
+                        <Label className="text-sm font-medium">Reason for Adoption</Label>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {selectedApplication.reason}
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <Label className="text-sm font-medium">Submitted</Label>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {new Date(selectedApplication.submitted_at).toLocaleString()}
+                        </p>
+                      </div>
+                      {selectedApplication.reviewed_at && (
+                        <div>
+                          <Label className="text-sm font-medium">Reviewed</Label>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {new Date(selectedApplication.reviewed_at).toLocaleString()}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {selectedApplication.admin_notes && (
+                      <div>
+                        <Label className="text-sm font-medium">Admin Notes</Label>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {selectedApplication.admin_notes}
+                        </p>
+                      </div>
+                    )}
+
+                    {selectedApplication.status === 'pending' && (
+                      <div className="flex gap-2 pt-4 border-t">
+                        <Button 
+                          className="flex-1"
+                          onClick={() => {
+                            handleApplicationAction(selectedApplication.id, 'approved');
+                            setApplicationDetailsOpen(false);
+                          }}
+                        >
+                          <CheckCircle className="h-4 w-4 mr-2" />
+                          Approve Application
+                        </Button>
+                        <Button 
+                          variant="outline"
+                          className="flex-1"
+                          onClick={() => {
+                            handleApplicationAction(selectedApplication.id, 'rejected');
+                            setApplicationDetailsOpen(false);
+                          }}
+                        >
+                          <XCircle className="h-4 w-4 mr-2" />
+                          Reject Application
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </DialogContent>
+            </Dialog>
           </TabsContent>
 
           <TabsContent value="feedbacks" className="space-y-6">
@@ -1237,7 +1598,12 @@ const Admin = () => {
             </Card>
 
             {/* Add/Edit Pet Dialog */}
-            <Dialog open={petDialogOpen} onOpenChange={setPetDialogOpen}>
+            <Dialog open={petDialogOpen} onOpenChange={(open) => {
+              setPetDialogOpen(open);
+              if (!open) {
+                setEditingPet(null);
+              }
+            }}>
               <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>{editingPet ? 'Edit Pet' : 'Add New Pet'}</DialogTitle>

@@ -4,31 +4,55 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Heart, Calendar, FileText, Stethoscope, Bell, User, MessageSquare, UserCog, HeartHandshake, ArrowRight } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Heart, Calendar, FileText, Stethoscope, Bell, User, MessageSquare, UserCog, HeartHandshake, ArrowRight, Edit, Check, X, Clock } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 const Dashboard = () => {
-  const { user, userRole } = useAuth();
+  const { user, userRole, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  
+  // Redirect vets to VetPortal - wait for role to load
+  useEffect(() => {
+    console.log('Dashboard - authLoading:', authLoading, 'userRole:', userRole);
+    if (!authLoading && userRole === 'vet') {
+      console.log('Redirecting vet to VetPortal');
+      navigate('/vet-portal');
+    }
+  }, [userRole, authLoading, navigate]);
+
   const [feedbackDialogOpen, setFeedbackDialogOpen] = useState(false);
   const [selectedApplication, setSelectedApplication] = useState<any>(null);
   const [feedbackRating, setFeedbackRating] = useState(5);
   const [feedbackComment, setFeedbackComment] = useState("");
   const [loading, setLoading] = useState(true);
   const [profileEditing, setProfileEditing] = useState(false);
+  const [ownedPets, setOwnedPets] = useState<any[]>([]);
+  const [editingPetId, setEditingPetId] = useState<string | null>(null);
+  const [editedPetName, setEditedPetName] = useState('');
+  const [appointmentDialogOpen, setAppointmentDialogOpen] = useState(false);
+  const [selectedPet, setSelectedPet] = useState<any>(null);
+  const [appointmentData, setAppointmentData] = useState({
+    appointment_date: '',
+    appointment_time: '',
+    reason: '',
+    appointment_type: 'checkup'
+  });
 
   // Real data from Supabase
   const [favorites, setFavorites] = useState<any[]>([]);
   const [applications, setApplications] = useState<any[]>([]);
   const [appointments, setAppointments] = useState<any[]>([]);
   const [vaccinations, setVaccinations] = useState<any[]>([]);
+  const [volunteerStatus, setVolunteerStatus] = useState<string | null>(null);
   const [profileData, setProfileData] = useState({
     first_name: '',
     last_name: '',
@@ -53,7 +77,9 @@ const Dashboard = () => {
       fetchApplications(),
       fetchAppointments(),
       fetchVaccinations(),
-      fetchProfile()
+      fetchProfile(),
+      fetchOwnedPets(),
+      fetchVolunteerStatus()
     ]);
     setLoading(false);
   };
@@ -182,11 +208,136 @@ const Dashboard = () => {
     }
   };
 
+  const fetchOwnedPets = async () => {
+    try {
+      // Get approved adoption applications
+      const { data: approvedApps, error } = await supabase
+        .from('adoption_applications')
+        .select(`
+          id,
+          pet_id,
+          approved_at:reviewed_at,
+          pets (
+            id,
+            name,
+            species,
+            breed,
+            age,
+            gender,
+            image_url,
+            vaccination_status,
+            spayed_neutered
+          )
+        `)
+        .eq('user_id', user?.id)
+        .eq('status', 'approved');
+
+      if (error) throw error;
+      
+      // Extract pets from approved applications
+      const pets = (approvedApps || [])
+        .filter(app => app.pets)
+        .map(app => ({
+          ...app.pets,
+          adopted_at: app.approved_at
+        }));
+      
+      setOwnedPets(pets);
+    } catch (error: any) {
+      console.error('Failed to fetch owned pets:', error);
+    }
+  };
+
+  const fetchVolunteerStatus = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('volunteers')
+        .select('status')
+        .eq('user_id', user?.id)
+        .maybeSingle();
+
+      if (error) throw error;
+      setVolunteerStatus(data?.status || null);
+    } catch (error) {
+      console.error('Error fetching volunteer status:', error);
+    }
+  };
+
+  const handleUpdatePetName = async (petId: string) => {
+    if (!editedPetName.trim()) {
+      toast.error("Pet name cannot be empty");
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('pets')
+        .update({ name: editedPetName })
+        .eq('id', petId);
+
+      if (error) throw error;
+
+      toast.success("Pet name updated successfully!");
+      setEditingPetId(null);
+      setEditedPetName('');
+      fetchOwnedPets();
+    } catch (error: any) {
+      console.error('Failed to update pet name:', error);
+      toast.error("Failed to update pet name");
+    }
+  };
+
+  const handleBookAppointment = async () => {
+    if (!selectedPet || !appointmentData.appointment_date || !appointmentData.appointment_time || !appointmentData.reason.trim()) {
+      toast.error("Please fill in all appointment details");
+      return;
+    }
+
+    try {
+      const appointmentDateTime = new Date(`${appointmentData.appointment_date}T${appointmentData.appointment_time}`);
+      
+      const { error } = await supabase
+        .from('vet_appointments')
+        .insert({
+          pet_id: selectedPet.id,
+          user_id: user?.id,
+          appointment_date: appointmentDateTime.toISOString(),
+          appointment_type: appointmentData.appointment_type,
+          reason: appointmentData.reason,
+          status: 'scheduled'
+        });
+
+      if (error) throw error;
+
+      toast.success("Appointment booked successfully!");
+      setAppointmentDialogOpen(false);
+      setSelectedPet(null);
+      setAppointmentData({
+        appointment_date: '',
+        appointment_time: '',
+        reason: '',
+        appointment_type: 'checkup'
+      });
+      fetchAppointments();
+    } catch (error: any) {
+      console.error('Failed to book appointment:', error);
+      toast.error("Failed to book appointment");
+    }
+  };
+
   const handleUpdateProfile = async () => {
     try {
       const { error } = await supabase
         .from('profiles')
-        .update(profileData)
+        .update({
+          first_name: profileData.first_name,
+          last_name: profileData.last_name,
+          phone: profileData.phone,
+          address: profileData.address,
+          city: profileData.city,
+          state: profileData.state,
+          zip_code: profileData.zip_code
+        })
         .eq('id', user?.id);
 
       if (error) throw error;
@@ -195,24 +346,46 @@ const Dashboard = () => {
       setProfileEditing(false);
     } catch (error: any) {
       console.error('Failed to update profile:', error);
-      toast.error("Failed to update profile");
+      toast.error("Failed to update profile: " + error.message);
     }
   };
 
-  const handleSubmitFeedback = () => {
+  const handleSubmitFeedback = async () => {
     if (!feedbackComment.trim()) {
       toast.error("Please provide feedback before submitting.");
       return;
     }
 
-    toast.success("Feedback Submitted", {
-      description: "Thank you for sharing your adoption experience!",
-    });
+    if (!selectedApplication) {
+      toast.error("No application selected");
+      return;
+    }
 
-    setFeedbackDialogOpen(false);
-    setFeedbackComment("");
-    setFeedbackRating(5);
-    setSelectedApplication(null);
+    try {
+      const { error } = await supabase
+        .from('pet_feedback')
+        .insert({
+          pet_id: selectedApplication.pets?.id,
+          user_id: user?.id,
+          adoption_application_id: selectedApplication.id,
+          rating: feedbackRating,
+          comment: feedbackComment
+        });
+
+      if (error) throw error;
+
+      toast.success("Feedback Submitted", {
+        description: "Thank you for sharing your adoption experience!",
+      });
+
+      setFeedbackDialogOpen(false);
+      setFeedbackComment("");
+      setFeedbackRating(5);
+      setSelectedApplication(null);
+    } catch (error: any) {
+      console.error('Failed to submit feedback:', error);
+      toast.error("Failed to submit feedback: " + error.message);
+    }
   };
 
   const getStatusColor = (status: string) => {
@@ -236,9 +409,33 @@ const Dashboard = () => {
           </p>
         </div>
 
+        {/* Pending Volunteer Alert */}
+        {volunteerStatus === 'pending' && (
+          <Alert className="mb-6 border-yellow-500 bg-yellow-50">
+            <Clock className="h-4 w-4 text-yellow-600" />
+            <AlertTitle className="text-yellow-900">Volunteer Application Pending</AlertTitle>
+            <AlertDescription className="text-yellow-800">
+              Your volunteer application is currently under review. You'll be notified once it has been approved by an administrator. 
+              Once approved, you'll gain access to the Volunteer Portal where you can view and sign up for volunteer activities.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {volunteerStatus === 'rejected' && (
+          <Alert className="mb-6 border-red-500 bg-red-50">
+            <X className="h-4 w-4 text-red-600" />
+            <AlertTitle className="text-red-900">Volunteer Application Not Approved</AlertTitle>
+            <AlertDescription className="text-red-800">
+              Unfortunately, your volunteer application was not approved at this time. 
+              Please contact us if you have any questions.
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 lg:w-auto">
+          <TabsList className="grid w-full grid-cols-6 lg:w-auto">
             <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="my-pets">My Pets</TabsTrigger>
             <TabsTrigger value="favorites">Favorites</TabsTrigger>
             <TabsTrigger value="applications">Applications</TabsTrigger>
             <TabsTrigger value="health">Health</TabsTrigger>
@@ -428,6 +625,177 @@ const Dashboard = () => {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          <TabsContent value="my-pets" className="space-y-6">
+            <Card className="shadow-card">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Heart className="h-5 w-5 text-primary" />
+                  My Adopted Pets
+                </CardTitle>
+                <CardDescription>
+                  Pets you've successfully adopted - manage their profiles and book appointments
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {ownedPets.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground mb-4">You haven't adopted any pets yet</p>
+                    <Button asChild>
+                      <Link to="/pets">Browse Available Pets</Link>
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {ownedPets.map(pet => (
+                      <Card key={pet.id} className="overflow-hidden">
+                        <img 
+                          src={pet.image_url || 'https://images.unsplash.com/photo-1450778869180-41d0601e046e?w=400&h=300&fit=crop'} 
+                          alt={pet.name} 
+                          className="w-full h-48 object-cover" 
+                        />
+                        <CardHeader className="pb-3">
+                          {editingPetId === pet.id ? (
+                            <div className="flex items-center gap-2">
+                              <Input
+                                value={editedPetName}
+                                onChange={(e) => setEditedPetName(e.target.value)}
+                                className="h-8"
+                                autoFocus
+                              />
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => handleUpdatePetName(pet.id)}
+                              >
+                                <Check className="h-4 w-4 text-green-600" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setEditingPetId(null);
+                                  setEditedPetName('');
+                                }}
+                              >
+                                <X className="h-4 w-4 text-red-600" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center justify-between">
+                              <CardTitle className="text-lg">{pet.name}</CardTitle>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => {
+                                  setEditingPetId(pet.id);
+                                  setEditedPetName(pet.name);
+                                }}
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          )}
+                          <CardDescription>
+                            {pet.breed || pet.species} • {pet.age} {pet.age === 1 ? 'year' : 'years'} • {pet.gender}
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-2">
+                          <div className="flex items-center gap-2 text-sm">
+                            <Badge variant="outline" className="capitalize">
+                              {pet.vaccination_status?.replace('_', ' ')}
+                            </Badge>
+                            {pet.spayed_neutered && (
+                              <Badge variant="outline">Spayed/Neutered</Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Adopted {pet.adopted_at ? new Date(pet.adopted_at).toLocaleDateString() : 'Recently'}
+                          </p>
+                          <Dialog open={appointmentDialogOpen && selectedPet?.id === pet.id} onOpenChange={(open) => {
+                            setAppointmentDialogOpen(open);
+                            if (open) setSelectedPet(pet);
+                            else setSelectedPet(null);
+                          }}>
+                            <DialogTrigger asChild>
+                              <Button className="w-full" size="sm">
+                                <Calendar className="h-4 w-4 mr-2" />
+                                Book Appointment
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>Book Vet Appointment for {pet.name}</DialogTitle>
+                                <DialogDescription>
+                                  Schedule a veterinary appointment for your pet
+                                </DialogDescription>
+                              </DialogHeader>
+                              <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div className="space-y-2">
+                                    <Label htmlFor="date">Date</Label>
+                                    <Input
+                                      id="date"
+                                      type="date"
+                                      min={new Date().toISOString().split('T')[0]}
+                                      value={appointmentData.appointment_date}
+                                      onChange={(e) => setAppointmentData({...appointmentData, appointment_date: e.target.value})}
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label htmlFor="time">Time</Label>
+                                    <Input
+                                      id="time"
+                                      type="time"
+                                      value={appointmentData.appointment_time}
+                                      onChange={(e) => setAppointmentData({...appointmentData, appointment_time: e.target.value})}
+                                    />
+                                  </div>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="type">Appointment Type</Label>
+                                  <Select
+                                    value={appointmentData.appointment_type}
+                                    onValueChange={(value) => setAppointmentData({...appointmentData, appointment_type: value})}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="checkup">Regular Checkup</SelectItem>
+                                      <SelectItem value="vaccination">Vaccination</SelectItem>
+                                      <SelectItem value="emergency">Emergency</SelectItem>
+                                      <SelectItem value="surgery">Surgery</SelectItem>
+                                      <SelectItem value="dental">Dental</SelectItem>
+                                      <SelectItem value="grooming">Grooming</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="reason">Reason for Visit</Label>
+                                  <Textarea
+                                    id="reason"
+                                    placeholder="Describe the reason for the appointment..."
+                                    value={appointmentData.reason}
+                                    onChange={(e) => setAppointmentData({...appointmentData, reason: e.target.value})}
+                                    rows={4}
+                                  />
+                                </div>
+                                <Button onClick={handleBookAppointment} className="w-full">
+                                  <Clock className="h-4 w-4 mr-2" />
+                                  Confirm Appointment
+                                </Button>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="favorites" className="space-y-6">

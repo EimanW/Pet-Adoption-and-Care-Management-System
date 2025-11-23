@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Heart, MapPin, Calendar, ArrowLeft, CheckCircle, AlertCircle, Stethoscope, Star } from "lucide-react";
+import { Heart, Calendar, ArrowLeft, CheckCircle, AlertCircle, Stethoscope, Star } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -216,21 +216,78 @@ const PetDetail = () => {
     }
 
     try {
-      const { error } = await supabase
-        .from('adoption_applications')
-        .insert({
-          pet_id: id,
-          user_id: user.id,
-          home_type: formData.homeType,
-          has_yard: formData.hasYard,
-          has_other_pets: formData.hasOtherPets,
-          has_children: formData.hasChildren,
-          experience: formData.experience,
-          reason: formData.reason,
-          status: 'pending'
-        });
+      console.log('=== ADOPTION APPLICATION DEBUG ===');
+      console.log('Current user:', user);
+      console.log('Pet ID:', id);
+      console.log('Form data:', formData);
 
-      if (error) throw error;
+      // Check authentication
+      const { data: { session } } = await supabase.auth.getSession();
+      console.log('Current session:', session);
+
+      if (!session) {
+        throw new Error('No active session. Please log in again.');
+      }
+
+      // First ensure user has a profile
+      console.log('Checking if profile exists...');
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      console.log('Profile check:', { profile, profileError });
+
+      if (!profile && !profileError) {
+        // Profile doesn't exist, create it
+        console.log('Creating profile for user:', user.id);
+        const { data: newProfile, error: createProfileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: user.id,
+            email: user.email
+          })
+          .select();
+        
+        console.log('Profile creation result:', { newProfile, createProfileError });
+        
+        if (createProfileError) {
+          console.error('Failed to create profile:', createProfileError);
+          throw new Error(`Failed to create user profile: ${createProfileError.message}`);
+        }
+      }
+
+      const applicationData = {
+        pet_id: id,
+        user_id: user.id,
+        home_type: formData.homeType,
+        has_yard: formData.hasYard,
+        has_other_pets: formData.hasOtherPets,
+        has_children: formData.hasChildren,
+        experience: formData.experience,
+        reason: formData.reason,
+        status: 'pending'
+      };
+
+      console.log('Submitting application with data:', applicationData);
+
+      const { data, error } = await supabase
+        .from('adoption_applications')
+        .insert(applicationData)
+        .select();
+
+      console.log('Submission result:', { data, error });
+
+      if (error) {
+        console.error('Submission error:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
+        throw error;
+      }
+
+      if (!data || data.length === 0) {
+        throw new Error('No data returned after insert. This might be a permissions issue.');
+      }
 
       setIsDialogOpen(false);
       toast.success("Adoption request submitted!", {
@@ -247,8 +304,15 @@ const PetDetail = () => {
         reason: ''
       });
     } catch (error: any) {
+      console.error('=== ERROR SUBMITTING APPLICATION ===');
+      console.error('Error object:', error);
+      console.error('Error message:', error.message);
+      console.error('Error details:', error.details);
+      console.error('Error hint:', error.hint);
+      console.error('Error code:', error.code);
+      
       toast.error("Failed to submit application", {
-        description: error.message
+        description: error.message || 'Please ensure all required fields are filled and you are logged in.'
       });
     }
   };
@@ -371,29 +435,65 @@ const PetDetail = () => {
                       </DialogHeader>
                       <form onSubmit={handleAdoptionSubmit} className="space-y-4">
                         <div className="space-y-2">
-                          <Label htmlFor="name">Full Name</Label>
-                          <Input id="name" required />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="email">Email</Label>
-                          <Input id="email" type="email" required />
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="phone">Phone Number</Label>
-                          <Input id="phone" type="tel" required />
-                        </div>
-                        <div className="space-y-2">
                           <Label htmlFor="living">Living Situation</Label>
-                          <Input id="living" placeholder="e.g., House with yard, Apartment" required />
+                          <Input 
+                            id="living" 
+                            placeholder="e.g., House with yard, Apartment" 
+                            value={formData.homeType}
+                            onChange={(e) => setFormData({...formData, homeType: e.target.value})}
+                            required 
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="experience">Pet Experience</Label>
+                          <Textarea 
+                            id="experience" 
+                            placeholder="Describe your experience with pets..."
+                            value={formData.experience}
+                            onChange={(e) => setFormData({...formData, experience: e.target.value})}
+                            rows={3}
+                          />
                         </div>
                         <div className="space-y-2">
                           <Label htmlFor="motivation">Why do you want to adopt {pet.name}?</Label>
                           <Textarea 
                             id="motivation" 
                             placeholder="Tell us about yourself and why you'd be a great fit..."
+                            value={formData.reason}
+                            onChange={(e) => setFormData({...formData, reason: e.target.value})}
                             required
                             rows={4}
                           />
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <input 
+                            type="checkbox" 
+                            id="hasYard"
+                            checked={formData.hasYard}
+                            onChange={(e) => setFormData({...formData, hasYard: e.target.checked})}
+                            className="h-4 w-4"
+                          />
+                          <Label htmlFor="hasYard" className="font-normal cursor-pointer">I have a yard</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <input 
+                            type="checkbox" 
+                            id="hasOtherPets"
+                            checked={formData.hasOtherPets}
+                            onChange={(e) => setFormData({...formData, hasOtherPets: e.target.checked})}
+                            className="h-4 w-4"
+                          />
+                          <Label htmlFor="hasOtherPets" className="font-normal cursor-pointer">I have other pets</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <input 
+                            type="checkbox" 
+                            id="hasChildren"
+                            checked={formData.hasChildren}
+                            onChange={(e) => setFormData({...formData, hasChildren: e.target.checked})}
+                            className="h-4 w-4"
+                          />
+                          <Label htmlFor="hasChildren" className="font-normal cursor-pointer">I have children</Label>
                         </div>
                         <DialogFooter>
                           <Button type="submit" className="w-full">Submit Application</Button>
@@ -482,23 +582,23 @@ const PetDetail = () => {
               <div className="flex items-start justify-between mb-2">
                 <div>
                   <h1 className="text-4xl font-bold mb-2">{pet.name}</h1>
-                  <p className="text-xl text-muted-foreground">{pet.breed}</p>
+                  <p className="text-xl text-muted-foreground">{pet.breed || pet.species}</p>
                 </div>
                 <Badge variant="outline" className="capitalize text-sm">
-                  {pet.type}
+                  {pet.species}
                 </Badge>
               </div>
               
               <div className="flex flex-wrap gap-4 mt-4">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Calendar className="h-4 w-4" />
-                  <span>{pet.age} {pet.age === 1 ? 'year' : 'years'} old</span>
-                </div>
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <MapPin className="h-4 w-4" />
-                  <span>{pet.location}</span>
-                </div>
-                <span className="capitalize text-muted-foreground">{pet.size} • {pet.gender}</span>
+                {pet.age && (
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Calendar className="h-4 w-4" />
+                    <span>{pet.age} {pet.age === 1 ? 'year' : 'years'} old</span>
+                  </div>
+                )}
+                {pet.size && pet.gender && (
+                  <span className="capitalize text-muted-foreground">{pet.size} • {pet.gender}</span>
+                )}
               </div>
             </div>
 
@@ -521,15 +621,15 @@ const PetDetail = () => {
                     
                     <div className="grid grid-cols-2 gap-4 pt-4">
                       <div className="space-y-1">
-                        <p className="text-sm font-semibold">Vaccinated</p>
+                        <p className="text-sm font-semibold">Vaccination Status</p>
                         <div className="flex items-center gap-2">
-                          {pet.vaccinated ? (
+                          {pet.vaccination_status === 'up_to_date' || pet.vaccination_status === 'complete' ? (
                             <CheckCircle className="h-4 w-4 text-health" />
                           ) : (
                             <AlertCircle className="h-4 w-4 text-destructive" />
                           )}
-                          <span className="text-sm text-muted-foreground">
-                            {pet.vaccinated ? 'Yes' : 'No'}
+                          <span className="text-sm text-muted-foreground capitalize">
+                            {pet.vaccination_status || 'Unknown'}
                           </span>
                         </div>
                       </div>
@@ -537,22 +637,22 @@ const PetDetail = () => {
                       <div className="space-y-1">
                         <p className="text-sm font-semibold">Spayed/Neutered</p>
                         <div className="flex items-center gap-2">
-                          {pet.neutered ? (
+                          {pet.spayed_neutered ? (
                             <CheckCircle className="h-4 w-4 text-health" />
                           ) : (
                             <AlertCircle className="h-4 w-4 text-destructive" />
                           )}
                           <span className="text-sm text-muted-foreground">
-                            {pet.neutered ? 'Yes' : 'No'}
+                            {pet.spayed_neutered ? 'Yes' : 'No'}
                           </span>
                         </div>
                       </div>
                     </div>
                     
-                    {pet.specialNeeds && (
+                    {pet.health_status && (
                       <div className="p-4 bg-muted rounded-lg">
-                        <p className="text-sm font-semibold mb-1">Special Needs</p>
-                        <p className="text-sm text-muted-foreground">{pet.specialNeeds}</p>
+                        <p className="text-sm font-semibold mb-1">Health Status</p>
+                        <p className="text-sm text-muted-foreground capitalize">{pet.health_status}</p>
                       </div>
                     )}
                   </CardContent>
@@ -571,22 +671,24 @@ const PetDetail = () => {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    {pet.medicalHistory.length > 0 ? (
+                    {medicalRecords.length > 0 ? (
                       <div className="space-y-4">
-                        {pet.medicalHistory.map((record) => (
+                        {medicalRecords.map((record) => (
                           <div key={record.id} className="border-l-2 border-health pl-4 pb-4">
                             <div className="flex items-center justify-between mb-2">
                               <Badge variant="outline" className="capitalize">
-                                {record.type}
+                                {record.record_type}
                               </Badge>
-                              <span className="text-sm text-muted-foreground">{record.date}</span>
+                              <span className="text-sm text-muted-foreground">
+                                {new Date(record.date).toLocaleDateString()}
+                              </span>
                             </div>
                             <p className="text-sm mb-1">{record.description}</p>
-                            <p className="text-xs text-muted-foreground">By {record.vet}</p>
-                            {record.nextDue && (
-                              <p className="text-xs text-muted-foreground mt-2">
-                                Next due: {record.nextDue}
-                              </p>
+                            {record.veterinarian && (
+                              <p className="text-xs text-muted-foreground">By {record.veterinarian}</p>
+                            )}
+                            {record.notes && (
+                              <p className="text-xs text-muted-foreground mt-2">{record.notes}</p>
                             )}
                           </div>
                         ))}
@@ -610,28 +712,39 @@ const PetDetail = () => {
                     <div>
                       <h4 className="font-semibold mb-2">Exercise Needs</h4>
                       <p className="text-sm text-muted-foreground">
-                        {pet.type === 'dog' && pet.size === 'large' && 'High - needs daily walks and active playtime'}
-                        {pet.type === 'dog' && pet.size === 'medium' && 'Moderate - regular walks and play sessions'}
-                        {pet.type === 'dog' && pet.size === 'small' && 'Low to Moderate - short walks and indoor play'}
-                        {pet.type === 'cat' && 'Moderate - interactive play and climbing opportunities'}
-                        {pet.type === 'rabbit' && 'Moderate - supervised exercise outside cage daily'}
+                        {pet.energy_level ? (
+                          <>
+                            {pet.energy_level === 'high' && 'High - needs daily walks and active playtime'}
+                            {pet.energy_level === 'moderate' && 'Moderate - regular walks and play sessions'}
+                            {pet.energy_level === 'low' && 'Low - short walks and gentle play'}
+                          </>
+                        ) : (
+                          'Energy level information not available'
+                        )}
                       </p>
                     </div>
                     
                     <div>
                       <h4 className="font-semibold mb-2">Feeding</h4>
                       <p className="text-sm text-muted-foreground">
-                        High-quality {pet.type} food, twice daily. Fresh water always available.
+                        High-quality {pet.species} food, as recommended by veterinarian. Fresh water always available.
                       </p>
                     </div>
                     
                     <div>
-                      <h4 className="font-semibold mb-2">Grooming</h4>
-                      <p className="text-sm text-muted-foreground">
-                        {pet.breed.includes('Persian') && 'Daily brushing required to prevent matting'}
-                        {pet.breed.includes('Golden') && 'Weekly brushing, more during shedding season'}
-                        {!pet.breed.includes('Persian') && !pet.breed.includes('Golden') && 'Regular brushing to maintain healthy coat'}
-                      </p>
+                      <h4 className="font-semibold mb-2">Special Considerations</h4>
+                      <div className="space-y-2">
+                        {pet.good_with_kids !== null && (
+                          <p className="text-sm text-muted-foreground">
+                            • {pet.good_with_kids ? 'Good with children' : 'Not recommended for homes with young children'}
+                          </p>
+                        )}
+                        {pet.good_with_pets !== null && (
+                          <p className="text-sm text-muted-foreground">
+                            • {pet.good_with_pets ? 'Good with other pets' : 'Best as an only pet'}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -647,26 +760,26 @@ const PetDetail = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {mockFeedback.length > 0 ? (
+                {feedback.length > 0 ? (
                   <div className="space-y-4">
-                    {mockFeedback.map((feedback) => (
-                      <div key={feedback.id} className="border-b pb-4 last:border-0">
+                    {feedback.map((item) => (
+                      <div key={item.id} className="border-b pb-4 last:border-0">
                         <div className="flex items-start justify-between mb-2">
                           <div>
                             <div className="flex items-center gap-2 mb-1">
-                              <span className="font-semibold">{feedback.userName}</span>
-                              {feedback.isVerifiedAdopter && (
-                                <Badge variant="secondary" className="text-xs">
-                                  Verified Adopter
-                                </Badge>
-                              )}
+                              <span className="font-semibold">
+                                {item.profiles?.first_name} {item.profiles?.last_name}
+                              </span>
+                              <Badge variant="secondary" className="text-xs">
+                                Verified Adopter
+                              </Badge>
                             </div>
                             <div className="flex items-center gap-1">
                               {[...Array(5)].map((_, i) => (
                                 <Star
                                   key={i}
                                   className={`w-4 h-4 ${
-                                    i < feedback.rating
+                                    i < item.rating
                                       ? "fill-yellow-500 text-yellow-500"
                                       : "text-gray-300"
                                   }`}
@@ -675,13 +788,15 @@ const PetDetail = () => {
                             </div>
                           </div>
                           <span className="text-sm text-muted-foreground">
-                            {new Date(feedback.submittedDate).toLocaleDateString()}
+                            {new Date(item.created_at).toLocaleDateString()}
                           </span>
                         </div>
-                        <p className="text-sm text-muted-foreground">{feedback.comment}</p>
-                        <p className="text-xs text-muted-foreground mt-2">
-                          Adopted on {new Date(feedback.adoptionDate).toLocaleDateString()}
-                        </p>
+                        <p className="text-sm text-muted-foreground">{item.comment}</p>
+                        {item.adoption_applications?.submitted_at && (
+                          <p className="text-xs text-muted-foreground mt-2">
+                            Adopted on {new Date(item.adoption_applications.submitted_at).toLocaleDateString()}
+                          </p>
+                        )}
                       </div>
                     ))}
                   </div>

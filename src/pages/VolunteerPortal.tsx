@@ -233,8 +233,8 @@ const VolunteerPortal = () => {
                 <div className="mt-4">
                   <p className="text-sm text-muted-foreground mb-2">Your Availability</p>
                   <div className="flex flex-wrap gap-2">
-                    {volunteerData.availability.map((day, index) => (
-                      <Badge key={index} variant="outline">{day}</Badge>
+                    {volunteerData.availability.map((item, index) => (
+                      <Badge key={index} variant="outline">{item}</Badge>
                     ))}
                   </div>
                 </div>
